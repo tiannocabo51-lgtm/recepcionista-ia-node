@@ -1,0 +1,21 @@
+{
+  "name": "recepcionista-ia-node",
+  "version": "1.0.0",
+  "description": "Agente de IA por WhatsApp para estéticas — Express + Claude + PostgreSQL + Evolution API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
