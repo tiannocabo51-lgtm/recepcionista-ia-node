@@ -45,10 +45,24 @@ const TOOLS = [
   },
 ];
 
+function notifyOwner(text) {
+  if (!business.whatsappHumano) return;
+  whatsappService
+    .sendMessage(business.whatsappHumano, text)
+    .catch((err) => logger.error('No se pudo notificar al dueño del negocio:', err.message));
+}
+
 async function executeTool(name, input, phone) {
   if (name === 'crear_turno') {
     const result = await appointmentService.createAppointment({ ...input, phone });
     if (result.ok) {
+      notifyOwner(
+        `📅 Nuevo turno agendado\n` +
+          `Cliente: ${result.appointment.name} (${phone})\n` +
+          `Servicio: ${result.appointment.service}\n` +
+          `Fecha: ${result.appointment.appointment_date} ${result.appointment.appointment_time}` +
+          (result.appointment.notes ? `\nNotas: ${result.appointment.notes}` : '')
+      );
       return JSON.stringify({
         ok: true,
         turno: {
@@ -65,14 +79,7 @@ async function executeTool(name, input, phone) {
 
   if (name === 'derivar_recepcionista') {
     await handoffsRepo.createHandoff(phone, input.reason);
-    if (business.whatsappHumano) {
-      whatsappService
-        .sendMessage(
-          business.whatsappHumano,
-          `Derivación de ${phone}: ${input.reason}`
-        )
-        .catch((err) => logger.error('No se pudo notificar a la recepcionista:', err.message));
-    }
+    notifyOwner(`Derivación de ${phone}: ${input.reason}`);
     return JSON.stringify({ ok: true, derivado: true });
   }
 

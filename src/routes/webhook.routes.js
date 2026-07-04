@@ -30,7 +30,6 @@ router.post('/webhook', (req, res) => {
 
   const parsed = whatsappService.parseIncomingMessage(req.body);
 
-  // Siempre respondemos 200 rápido para que Evolution API no reintente el webhook.
   res.status(200).json({ status: 'received' });
 
   if (!parsed) return;

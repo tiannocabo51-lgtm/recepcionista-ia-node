@@ -3,6 +3,7 @@ const config = require('./utils/config');
 const logger = require('./utils/logger');
 const healthRoutes = require('./routes/health.routes');
 const webhookRoutes = require('./routes/webhook.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 
 const app = express();
 
@@ -10,6 +11,7 @@ app.use(express.json({ limit: '2mb' }));
 
 app.use(healthRoutes);
 app.use(webhookRoutes);
+app.use(dashboardRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ status: 'not_found' });

@@ -1,5 +1,5 @@
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -25,13 +25,16 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     networks:
       - internal
+      - evolution_default
 
 networks:
   internal:
+  evolution_default:
+    external: true
 
 volumes:
   postgres_data:
