@@ -119,6 +119,36 @@ function renderPage({ active, agentOnline, content, wide }) {
     .cal-cell { font-size:.6rem; }
     .kv { grid-template-columns:1fr; }
   }
+
+  /* Calendario v2 */
+  .cal2 { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--card); margin-top:8px; }
+  .cal2-head { display:grid; grid-template-columns:56px repeat(7,1fr); border-bottom:1px solid var(--line); }
+  .cal2-corner { background:var(--card2); }
+  .cal2-dayhead { padding:10px 6px; text-align:center; background:var(--card2); border-left:1px solid var(--line); display:flex; flex-direction:column; gap:2px; }
+  .cal2-dayname { font-weight:700; font-size:.82rem; color:var(--txt); }
+  .cal2-daynum { font-size:.7rem; color:var(--mut); }
+  .cal2-today { background:rgba(99,102,241,.16); }
+  .cal2-today .cal2-dayname { color:var(--acc2); }
+  .cal2-body { display:grid; grid-template-columns:56px 1fr; }
+  .cal2-timecol { display:flex; flex-direction:column; background:var(--card2); }
+  .cal2-time { font-size:.68rem; color:var(--mut); text-align:right; padding:2px 8px 0 0; border-bottom:1px solid transparent; box-sizing:border-box; }
+  .cal2-cols { display:grid; grid-template-columns:repeat(7,1fr); }
+  .cal2-col { position:relative; border-left:1px solid var(--line); box-sizing:border-box; }
+  .cal2-slot { box-sizing:border-box; border-bottom:1px solid rgba(35,45,71,.5); }
+  .cal2-slot.cal2-onhour { border-bottom:1px solid var(--line); }
+  .cal2-open { background:var(--card); }
+  .cal2-closed { background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 6px,#0d1220 6px,#0d1220 12px); }
+  .cal2-appt { position:absolute; left:3px; right:3px; border-radius:8px; padding:4px 7px; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; gap:1px; box-shadow:0 2px 8px rgba(0,0,0,.4); background:linear-gradient(135deg,#4338ca,#4f46e5); border-left:3px solid #a5b4fc; z-index:2; }
+  .cal2-appt.st-pendiente { background:linear-gradient(135deg,#854d0e,#a16207); border-left-color:var(--warn); }
+  .cal2-appt.st-cancelado { background:linear-gradient(135deg,#7f1d1d,#991b1b); border-left-color:var(--bad); opacity:.7; }
+  .cal2-appt-line { display:flex; align-items:baseline; gap:5px; white-space:nowrap; overflow:hidden; }
+  .cal2-appt-time { font-size:.66rem; font-weight:700; color:#fff; flex-shrink:0; }
+  .cal2-appt-compact { padding:2px 7px; gap:0; }
+  .cal2-appt-compact .cal2-appt-svc { display:none; }
+  .cal2-appt-name { font-size:.74rem; font-weight:600; color:#eef2ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal2-appt-svc { font-size:.66rem; color:#c7d2fe; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal2-empty { color:var(--mut); font-style:italic; padding:24px; text-align:center; }
+  @media (max-width:760px) { .cal2-body,.cal2-head { min-width:640px; } .cal2 { overflow-x:auto; } }
 </style>
 </head>
 <body>
