@@ -211,64 +211,107 @@ const ESTADO_INFO = {
 
 router.get('/dashboard/leads', async (req, res) => {
   const filtro = typeof req.query.estado === 'string' ? req.query.estado : null;
+  const vista = req.query.vista === 'tablero' ? 'tablero' : 'lista';
   const [online, counts, leads] = await Promise.all([
     agentOnline(),
     leadsRepo.countByEstado(),
-    leadsRepo.listLeads(filtro),
+    leadsRepo.listLeads(vista === 'tablero' ? null : filtro),
   ]);
+
   const cards = Object.entries(ESTADO_INFO)
     .map(([est, info]) => {
-      const activo = filtro === est ? ' lead-card-active' : '';
+      const activo = filtro === est && vista === 'lista' ? ' lead-card-active' : '';
       return '<a class="lead-card lc-' + est + activo + '" href="/dashboard/leads?estado=' + est + '">'
         + '<span class="lead-card-ico">' + info[0] + '</span>'
         + '<span class="lead-card-num">' + (counts[est] || 0) + '</span>'
         + '<span class="lead-card-lbl">' + info[1] + '</span></a>';
     })
     .join('');
+
+  function chipsFor(interes) {
+    return (interes || '').split(',').map((x) => x.trim()).filter(Boolean)
+      .map((x) => '<span class="lead-chip">' + escapeHtml(x) + '</span>').join('');
+  }
+
+  // Vista LISTA
   const rows = leads.length
-    ? leads
-        .map((l) => {
-          const inicial = (l.nombre || l.phone).trim().charAt(0).toUpperCase();
-          const chips = (l.interes || '')
-            .split(',')
-            .map((x) => x.trim())
-            .filter(Boolean)
-            .map((x) => '<span class="lead-chip">' + escapeHtml(x) + '</span>')
-            .join('');
-          return '<div class="lead-row">'
-            + '<div class="lead-av">' + escapeHtml(inicial) + '</div>'
-            + '<div class="lead-main"><div class="lead-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
-            + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
-            + '<div class="lead-tags"><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span>' + chips + '</div>'
-            + '<div class="lead-when">' + fmtTime(l.ultimo_contacto) + '</div>'
-            + '<a class="btn lead-btn" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
-            + '</div>';
-        })
-        .join('')
+    ? leads.map((l) => {
+        const inicial = (l.nombre || l.phone).trim().charAt(0).toUpperCase();
+        return '<div class="lead-row">'
+          + '<div class="lead-av">' + escapeHtml(inicial) + '</div>'
+          + '<div class="lead-main"><div class="lead-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
+          + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
+          + '<div class="lead-tags"><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span>' + chipsFor(l.interes) + '</div>'
+          + '<div class="lead-when">' + fmtTime(l.ultimo_contacto) + '</div>'
+          + '<a class="btn lead-btn" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
+          + '</div>';
+      }).join('')
     : '<p class="empty" style="padding:32px;text-align:center">No hay leads en esta categoria.</p>';
-  const filtroLabel = filtro && ESTADO_INFO[filtro] ? ' Mostrando: ' + ESTADO_INFO[filtro][1] : ' Toca una tarjeta para filtrar.';
+
+  // Vista TABLERO (kanban)
+  const columnas = Object.entries(ESTADO_INFO).map(([est, info]) => {
+    const delEstado = leads.filter((l) => l.estado === est);
+    const tarjetas = delEstado.length
+      ? delEstado.map((l) =>
+          '<a class="kan-card" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">'
+          + '<div class="kan-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
+          + '<div class="kan-phone">' + escapeHtml(l.phone) + '</div>'
+          + (chipsFor(l.interes) ? '<div class="kan-chips">' + chipsFor(l.interes) + '</div>' : '')
+          + '</a>'
+        ).join('')
+      : '<div class="kan-empty">—</div>';
+    return '<div class="kan-col kc-' + est + '">'
+      + '<div class="kan-head"><span>' + info[0] + ' ' + info[1] + '</span><span class="kan-count">' + delEstado.length + '</span></div>'
+      + '<div class="kan-body">' + tarjetas + '</div></div>';
+  }).join('');
+
+  const toggle = '<div class="lead-toggle">'
+    + '<a class="' + (vista === 'lista' ? 'tg-on' : '') + '" href="/dashboard/leads">Lista</a>'
+    + '<a class="' + (vista === 'tablero' ? 'tg-on' : '') + '" href="/dashboard/leads?vista=tablero">Tablero</a>'
+    + '</div>';
+
+  const cuerpo = vista === 'tablero'
+    ? '<div class="kanban">' + columnas + '</div>'
+    : (filtro ? '<div class="toolbar"><a class="btn" href="/dashboard/leads">Ver todos</a></div>' : '') + rows;
+
+  const filtroLabel = vista === 'lista' && filtro && ESTADO_INFO[filtro] ? ' Mostrando: ' + ESTADO_INFO[filtro][1] : ' Clientes clasificados automaticamente.';
+
   const content = '<style>'
-    + '.lead-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:26px}'
+    + '.lead-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}'
     + '.lead-card{display:flex;flex-direction:column;gap:4px;padding:18px;border-radius:14px;border:1px solid var(--line);background:var(--card);text-decoration:none;color:var(--txt);transition:transform .16s,border-color .16s}'
     + '.lead-card:hover{transform:translateY(-2px)}'
     + '.lead-card-ico{font-size:1.15rem}.lead-card-num{font-size:1.9rem;font-weight:700;letter-spacing:-.03em}.lead-card-lbl{font-size:.78rem;color:var(--mut)}'
     + '.lc-nuevo{border-top:3px solid #94a3b8}.lc-consultando{border-top:3px solid var(--warn)}.lc-turno{border-top:3px solid var(--acc2)}.lc-cliente{border-top:3px solid var(--ok)}.lc-frio{border-top:3px solid #60a5fa}'
     + '.lead-card-active{border-color:var(--acc2);background:var(--card2)}'
+    + '.lead-toggle{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:18px;gap:2px}'
+    + '.lead-toggle a{padding:6px 16px;border-radius:8px;text-decoration:none;color:var(--mut);font-size:.84rem}'
+    + '.lead-toggle a.tg-on{background:var(--acc);color:#fff}'
     + '.lead-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;margin-bottom:10px;background:var(--card);transition:border-color .16s}'
     + '.lead-row:hover{border-color:var(--acc2)}'
     + '.lead-av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}'
     + '.lead-main{min-width:130px}.lead-name{font-weight:600;font-size:.9rem}.lead-phone{font-size:.76rem;color:var(--mut);margin-top:2px}'
     + '.lead-tags{flex:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
     + '.lead-chip{font-size:.72rem;padding:3px 9px;border-radius:999px;background:var(--card2);color:var(--acc2);border:1px solid var(--line)}'
-    + '.lead-when{font-size:.75rem;color:var(--mut);white-space:nowrap}'
-    + '.lead-btn{flex-shrink:0}'
+    + '.lead-when{font-size:.75rem;color:var(--mut);white-space:nowrap}.lead-btn{flex-shrink:0}'
     + '.pill-nuevo{background:rgba(148,163,173,.2);color:#cbd5e1}.pill-consultando{background:rgba(251,191,36,.15);color:var(--warn)}.pill-turno{background:rgba(99,102,241,.18);color:var(--acc2)}.pill-cliente{background:rgba(52,211,153,.15);color:var(--ok)}.pill-frio{background:rgba(96,165,250,.15);color:#60a5fa}'
-    + '@media(max-width:640px){.lead-row{flex-wrap:wrap}.lead-when,.lead-btn{width:auto}}'
+    + '.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}'
+    + '.kan-col{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:120px}'
+    + '.kan-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;font-size:.8rem;font-weight:600;border-bottom:1px solid var(--line);background:var(--card2)}'
+    + '.kan-count{background:var(--bg);border-radius:999px;padding:1px 8px;font-size:.72rem;color:var(--mut)}'
+    + '.kc-nuevo .kan-head{border-top:3px solid #94a3b8}.kc-consultando .kan-head{border-top:3px solid var(--warn)}.kc-turno .kan-head{border-top:3px solid var(--acc2)}.kc-cliente .kan-head{border-top:3px solid var(--ok)}.kc-frio .kan-head{border-top:3px solid #60a5fa}'
+    + '.kan-body{padding:10px;display:flex;flex-direction:column;gap:8px}'
+    + '.kan-card{display:block;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:10px;text-decoration:none;color:var(--txt);transition:border-color .16s}'
+    + '.kan-card:hover{border-color:var(--acc2)}'
+    + '.kan-name{font-weight:600;font-size:.82rem}.kan-phone{font-size:.72rem;color:var(--mut);margin-top:2px}'
+    + '.kan-chips{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}'
+    + '.kan-empty{color:var(--mut);text-align:center;padding:16px;font-size:.8rem}'
+    + '@media(max-width:900px){.kanban{grid-template-columns:1fr;}.kan-col{min-height:auto}}'
+    + '@media(max-width:640px){.lead-row{flex-wrap:wrap}}'
     + '</style>'
-    + '<h1>Leads</h1><p class="sub">Clientes clasificados automaticamente.' + filtroLabel + '</p>'
+    + '<h1>Leads</h1><p class="sub">' + filtroLabel + '</p>'
     + '<div class="lead-cards">' + cards + '</div>'
-    + (filtro ? '<div class="toolbar"><a class="btn" href="/dashboard/leads">Ver todos</a></div>' : '')
-    + rows;
+    + toggle
+    + cuerpo;
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true }));
 });
 
