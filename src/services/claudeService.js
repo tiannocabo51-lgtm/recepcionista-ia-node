@@ -5,6 +5,8 @@ const { buildSystemPrompt } = require('../utils/systemPrompt');
 const conversationsRepo = require('../db/conversations.repository');
 const appointmentService = require('./appointmentService');
 const handoffsRepo = require('../db/handoffs.repository');
+const leadsRepo = require('../db/leads.repository');
+const leadClassifier = require('./leadClassifier');
 const whatsappService = require('./whatsappService');
 const business = require('../utils/businessConfig');
 
@@ -28,6 +30,24 @@ const TOOLS = [
         notes: { type: 'string', description: 'Notas adicionales, opcional' },
       },
       required: ['name', 'service', 'date', 'time'],
+    },
+  },
+  {
+    name: 'clasificar_lead',
+    description:
+      'Registra o actualiza la clasificacion del cliente en el CRM. Llamala cuando entiendas ' +
+      'en que etapa esta el cliente o que le interesa, SIN avisarle ni mencionarlo (es interno). ' +
+      'Estados: "nuevo" (recien escribe), "consultando" (pregunta precios/servicios pero no reservo), ' +
+      '"turno" (saco o esta por sacar turno), "cliente" (ya vino o es recurrente), "frio" (pregunto y no avanzo).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        estado: { type: 'string', enum: ['nuevo', 'consultando', 'turno', 'cliente', 'frio'], description: 'Etapa del cliente' },
+        nombre: { type: 'string', description: 'Nombre del cliente si lo dijo' },
+        interes: { type: 'string', description: 'Servicio/s que le interesan, ej: "Hifu, Depilacion"' },
+        notas: { type: 'string', description: 'Nota interna breve, opcional' },
+      },
+      required: ['estado'],
     },
   },
   {
@@ -77,6 +97,13 @@ async function executeTool(name, input, phone) {
     return JSON.stringify({ ok: false, error: result.error });
   }
 
+  if (name === 'clasificar_lead') {
+    await leadsRepo
+      .updateLead(phone, input)
+      .catch((err) => logger.error('No se pudo clasificar el lead:', err.message));
+    return JSON.stringify({ ok: true, clasificado: true });
+  }
+
   if (name === 'derivar_recepcionista') {
     await handoffsRepo.createHandoff(phone, input.reason);
     notifyOwner(`Derivación de ${phone}: ${input.reason}`);
@@ -98,6 +125,7 @@ function extractText(content) {
 async function handleMessage(phone, userMessage) {
   const history = await conversationsRepo.getRecentHistory(phone);
   await conversationsRepo.saveMessage(phone, 'user', userMessage);
+  await leadsRepo.ensureLead(phone).catch(() => {});
 
   const messages = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
@@ -141,6 +169,10 @@ async function handleMessage(phone, userMessage) {
   }
 
   await conversationsRepo.saveMessage(phone, 'assistant', finalText);
+
+  // CRM: clasificar si paso suficiente tiempo desde la ultima clasificacion (opcion C)
+  leadClassifier.maybeClassify(phone).catch(() => {});
+
   return finalText;
 }
 

@@ -60,6 +60,14 @@ async function countNewClientsToday() {
   return result.rows[0].n;
 }
 
+async function countByPhone(phone) {
+  const r = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM conversations WHERE phone = $1 AND role = 'user'`,
+    [phone]
+  );
+  return r.rows[0].n;
+}
+
 module.exports = {
   saveMessage,
   getRecentHistory,
@@ -67,4 +75,5 @@ module.exports = {
   findByPhone,
   countToday,
   countNewClientsToday,
+  countByPhone,
 };

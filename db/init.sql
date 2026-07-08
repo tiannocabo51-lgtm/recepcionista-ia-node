@@ -32,3 +32,16 @@ CREATE TABLE IF NOT EXISTS handoffs (
   reason      TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS leads (
+  id                SERIAL PRIMARY KEY,
+  phone             VARCHAR(30) UNIQUE NOT NULL,
+  nombre            VARCHAR(150),
+  estado            VARCHAR(20) NOT NULL DEFAULT 'nuevo',
+  interes           TEXT,
+  notas             TEXT,
+  ultimo_contacto   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_estado ON leads(estado);

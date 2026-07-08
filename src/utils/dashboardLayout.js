@@ -12,6 +12,7 @@ const NAV = [
   ['inicio', 'Inicio', '/dashboard'],
   ['agenda', 'Agenda', '/dashboard/agenda'],
   ['mensajes', 'Mensajes', '/dashboard/mensajes'],
+  ['leads', 'Leads', '/dashboard/leads'],
   ['derivaciones', 'Derivaciones', '/dashboard/derivaciones'],
   ['ajustes', 'Ajustes', '/dashboard/ajustes'],
 ];

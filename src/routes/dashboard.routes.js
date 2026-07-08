@@ -3,6 +3,7 @@ const dashboardAuth = require('../middleware/dashboardAuth');
 const appointmentsRepo = require('../db/appointments.repository');
 const conversationsRepo = require('../db/conversations.repository');
 const handoffsRepo = require('../db/handoffs.repository');
+const leadsRepo = require('../db/leads.repository');
 const business = require('../utils/businessConfig');
 const config = require('../utils/config');
 const { renderPage, escapeHtml } = require('../utils/dashboardLayout');
@@ -198,6 +199,40 @@ router.get('/dashboard/derivaciones', async (req, res) => {
 <p class="sub">Casos que el agente pasó a un humano.</p>
 ${cards}`;
   res.send(renderPage({ active: 'derivaciones', agentOnline: online, content }));
+});
+
+const ESTADO_INFO = {
+  nuevo: ['\u{1F195}', 'Nuevos'],
+  consultando: ['\u{1F440}', 'Consultando'],
+  turno: ['\u{1F4C5}', 'Con turno'],
+  cliente: ['\u2B50', 'Clientes'],
+  frio: ['\u2744', 'Frios'],
+};
+
+router.get('/dashboard/leads', async (req, res) => {
+  const filtro = typeof req.query.estado === 'string' ? req.query.estado : null;
+  const [online, counts, leads] = await Promise.all([
+    agentOnline(),
+    leadsRepo.countByEstado(),
+    leadsRepo.listLeads(filtro),
+  ]);
+  const cards = Object.entries(ESTADO_INFO)
+    .map(([est, info]) => {
+      const activo = filtro === est ? ' style="border-color:var(--acc2)"' : '';
+      return '<a class="card" href="/dashboard/leads?estado=' + est + '"' + activo + '><div class="chip chip1">' + info[0] + '</div><div class="num">' + (counts[est] || 0) + '</div><div class="lbl">' + info[1] + '</div></a>';
+    })
+    .join('');
+  const rows = leads.length
+    ? leads
+        .map((l) => '<tr><td>' + escapeHtml(l.nombre || '-') + '</td><td>' + escapeHtml(l.phone) + '</td><td><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span></td><td>' + escapeHtml(l.interes || '-') + '</td><td>' + fmtTime(l.ultimo_contacto) + '</td><td><a class="btn" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a></td></tr>')
+        .join('')
+    : '<tr><td colspan="6" class="empty">No hay leads en esta categoria.</td></tr>';
+  const content = '<style>.pill-nuevo{background:rgba(148,163,173,.2);color:#cbd5e1}.pill-consultando{background:rgba(251,191,36,.15);color:var(--warn)}.pill-turno{background:rgba(99,102,241,.18);color:var(--acc2)}.pill-cliente{background:rgba(52,211,153,.15);color:var(--ok)}.pill-frio{background:rgba(96,165,250,.15);color:#60a5fa}a.card{text-decoration:none;color:var(--txt)}</style>'
+    + '<h1>Leads</h1><p class="sub">Clientes clasificados automaticamente. Toca una tarjeta para filtrar.</p>'
+    + '<div class="cards" style="margin-bottom:24px">' + cards + '</div>'
+    + '<div class="toolbar"><a class="btn" href="/dashboard/leads">Ver todos</a></div>'
+    + '<table><thead><tr><th>Nombre</th><th>Telefono</th><th>Estado</th><th>Interes</th><th>Ultimo contacto</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+  res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true }));
 });
 
 router.get('/dashboard/ajustes', async (req, res) => {
