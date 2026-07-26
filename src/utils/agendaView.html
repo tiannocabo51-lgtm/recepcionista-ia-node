@@ -611,7 +611,8 @@ function openModal(id,date,from,proId){
   $('m-price').value=e&&e.price?'$'+e.price:'';$('m-dep').value=e&&e.dep?'$'+e.dep:'';$('m-notes').value=e?(e.notes||''):'';
   mSt=e?e.st:'pendiente';mCol=e?e.color:SRV[0].c;
   $('m-st').innerHTML=Object.entries(ST).map(function([k,v]){return '<button class="chip'+(mSt===k?' on':'')+'" data-k="'+k+'" style="'+(mSt===k?'background:'+v.c+';border-color:transparent;color:#0b0f1a':'')+'">'+v.i+' '+v.l+'</button>'}).join('');
-  $('m-col').innerHTML=SRV.map(s=>'<button class="sw-b'+(mCol===s.c?' on':'')+'" data-c="'+s.c+'" style="background:'+s.c+'" title="'+esc(s.n)+'"></button>').join('');
+  var PAL=['#818cf8','#6366f1','#a78bfa','#c084fc','#f472b6','#fb7185','#f87171','#fbbf24','#facc15','#34d399','#2dd4bf','#38bdf8','#60a5fa','#e879f9'];
+  $('m-col').innerHTML=PAL.map(c=>'<button class="sw-b'+(mCol===c?' on':'')+'" data-c="'+c+'" style="background:'+c+'"></button>').join('');
   bindModal();syncTo();$('modal').classList.add('on');setTimeout(function(){$('m-name').focus()},120);
 }
 function bindModal(){
