@@ -33,7 +33,7 @@ async function remove(id) {
 
 async function overlaps(date, from, duration) {
   const result = await pool.query(
-    `SELECT id FROM blocks WHERE block_date=$1 AND from_min < $2 + $3 AND from_min + duration > $2 LIMIT 1`,
+    `SELECT id FROM blocks WHERE block_date=$1 AND from_min < $2::int + $3::int AND from_min + duration > $2::int LIMIT 1`,
     [date, from, duration]
   );
   return result.rows[0] || null;
