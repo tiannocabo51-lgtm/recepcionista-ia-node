@@ -11,9 +11,9 @@ function isAuthorized(req) {
   return req.query.token === config.webhookVerifyToken;
 }
 
-async function processIncoming(phone, text) {
+async function processIncoming(phone, text, audioData) {
   try {
-    const reply = await claudeService.handleMessage(phone, text);
+    const reply = await claudeService.handleMessage(phone, text, audioData);
     await whatsappService.sendMessage(phone, reply);
   } catch (err) {
     logger.error(`Error procesando mensaje de ${phone}:`, err);
@@ -23,7 +23,7 @@ async function processIncoming(phone, text) {
   }
 }
 
-router.post('/webhook', (req, res) => {
+router.post('/webhook', async (req, res) => {
   if (!isAuthorized(req)) {
     return res.status(401).json({ status: 'unauthorized' });
   }
@@ -33,6 +33,17 @@ router.post('/webhook', (req, res) => {
   res.status(200).json({ status: 'received' });
 
   if (!parsed) return;
+
+  if (parsed.type === 'audio') {
+    logger.info(`Audio entrante de ${parsed.phone}`);
+    const base64 = await whatsappService.downloadMedia(parsed.mediaId);
+    if (!base64) {
+      await whatsappService.sendMessage(parsed.phone, 'No pude escuchar tu audio, ¿me lo mandás de nuevo?');
+      return;
+    }
+    processIncoming(parsed.phone, null, { base64, mimetype: parsed.mimetype });
+    return;
+  }
 
   logger.info(`Mensaje entrante de ${parsed.phone}: ${parsed.text.slice(0, 80)}`);
   processIncoming(parsed.phone, parsed.text);

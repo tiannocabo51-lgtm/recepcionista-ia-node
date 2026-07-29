@@ -122,14 +122,29 @@ function extractText(content) {
 }
 
 // Procesa un mensaje entrante de un teléfono y devuelve el texto de respuesta final.
-async function handleMessage(phone, userMessage) {
+async function handleMessage(phone, userMessage, audioData) {
   const history = await conversationsRepo.getRecentHistory(phone);
-  await conversationsRepo.saveMessage(phone, 'user', userMessage);
+
+  let userContent;
+  if (audioData) {
+    await conversationsRepo.saveMessage(phone, 'user', '[audio]');
+    userContent = [
+      {
+        type: 'document',
+        source: { type: 'base64', media_type: audioData.mimetype, data: audioData.base64 },
+      },
+      { type: 'text', text: 'El cliente te envió un audio de WhatsApp. Escuchalo y respondé normalmente.' },
+    ];
+  } else {
+    await conversationsRepo.saveMessage(phone, 'user', userMessage);
+    userContent = userMessage;
+  }
+
   await leadsRepo.ensureLead(phone).catch(() => {});
 
   const messages = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userMessage },
+    { role: 'user', content: userContent },
   ];
 
   const system = buildSystemPrompt({ phone, now: new Date() });

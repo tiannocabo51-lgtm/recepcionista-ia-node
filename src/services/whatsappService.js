@@ -46,9 +46,36 @@ function parseIncomingMessage(body) {
     message?.imageMessage?.caption ||
     null;
 
+  const audioMsg = message?.audioMessage;
+  if (audioMsg) {
+    const mediaId = data.key?.id;
+    return { phone, type: 'audio', mediaId, mimetype: audioMsg.mimetype || 'audio/ogg' };
+  }
+
   if (!text) return null;
 
-  return { phone, text: text.trim() };
+  return { phone, type: 'text', text: text.trim() };
 }
 
-module.exports = { sendMessage, parseIncomingMessage };
+async function downloadMedia(mediaId) {
+  const url = `${config.evolutionApiUrl}/chat/getBase64FromMediaMessage/${config.evolutionInstance}`;
+  try {
+    const resp = await axios.post(
+      url,
+      { message: { key: { id: mediaId } } },
+      {
+        headers: {
+          apikey: config.evolutionApiKey,
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      }
+    );
+    return resp.data?.base64 || null;
+  } catch (err) {
+    logger.error('Error descargando audio:', err.response?.data || err.message);
+    return null;
+  }
+}
+
+module.exports = { sendMessage, parseIncomingMessage, downloadMedia };
