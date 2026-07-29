@@ -22,7 +22,9 @@ async function getRecentHistory(phone, limit = HISTORY_LIMIT) {
 
 async function listConversations() {
   const result = await pool.query(
-    `SELECT c.phone, c.content, c.role, c.created_at, t.total
+    `SELECT c.phone, c.content, c.role, c.created_at, t.total,
+            COALESCE(l.nombre, a.name) AS nombre,
+            COALESCE(l.ai_enabled, true) AS ai_enabled
      FROM (
        SELECT DISTINCT ON (phone) phone, content, role, created_at
        FROM conversations ORDER BY phone, created_at DESC
@@ -30,6 +32,11 @@ async function listConversations() {
      JOIN (
        SELECT phone, COUNT(*) AS total FROM conversations GROUP BY phone
      ) t ON t.phone = c.phone
+     LEFT JOIN leads l ON l.phone = c.phone
+     LEFT JOIN LATERAL (
+       SELECT name FROM appointments WHERE appointments.phone = c.phone
+       ORDER BY created_at DESC LIMIT 1
+     ) a ON true
      ORDER BY c.created_at DESC`
   );
   return result.rows;

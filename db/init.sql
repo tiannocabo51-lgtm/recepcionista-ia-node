@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS leads (
   estado            VARCHAR(20) NOT NULL DEFAULT 'nuevo',
   interes           TEXT,
   notas             TEXT,
+  ai_enabled        BOOLEAN NOT NULL DEFAULT true,
   ultimo_contacto   TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -12,6 +12,13 @@ const { renderWeekCalendar, mondayOf, addDays } = require('../utils/weekCalendar
 const router = express.Router();
 router.use('/dashboard', dashboardAuth);
 
+router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
+  const { phone, enabled } = req.body;
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  await leadsRepo.toggleAi(phone, enabled !== false);
+  res.json({ ok: true, phone, ai_enabled: enabled !== false });
+});
+
 async function agentOnline() {
   try {
     const r = await fetch(
@@ -91,7 +98,7 @@ router.get('/dashboard', async (req, res) => {
         .slice(0, 5)
         .map(
           (c) =>
-            `<div class="mini"><div><strong>${escapeHtml(c.phone)}</strong><span class="mini-sub">${escapeHtml(c.content.slice(0, 48))}</span></div><div class="mini-right">${fmtTime(c.created_at)}</div></div>`
+            `<div class="mini"><div><strong>${escapeHtml(c.nombre || c.phone)}</strong><span class="mini-sub">${escapeHtml(c.content.slice(0, 48))}</span></div><div class="mini-right">${fmtTime(c.created_at)}</div></div>`
         )
         .join('')
     : '<p class="empty">Sin conversaciones aún.</p>';
@@ -143,21 +150,39 @@ router.get('/dashboard/mensajes', async (req, res) => {
   const items = convs.length
     ? convs
         .map(
-          (c) => `
-    <a class="conv-item${sel === c.phone ? ' sel' : ''}" href="/dashboard/mensajes?phone=${encodeURIComponent(c.phone)}">
-      <div class="avatar">${escapeHtml(c.phone.slice(-2))}</div>
+          (c) => {
+            const displayName = c.nombre || c.phone;
+            const initials = c.nombre ? c.nombre.trim().charAt(0).toUpperCase() : c.phone.slice(-2);
+            const aiOff = c.ai_enabled === false ? ' ai-off' : '';
+            return `
+    <a class="conv-item${sel === c.phone ? ' sel' : ''}${aiOff}" href="/dashboard/mensajes?phone=${encodeURIComponent(c.phone)}">
+      <div class="avatar">${escapeHtml(initials)}</div>
       <div class="conv-meta">
-        <div class="conv-phone">${escapeHtml(c.phone)}</div>
+        <div class="conv-phone">${escapeHtml(displayName)}${c.nombre ? '<span class="conv-num">' + escapeHtml(c.phone) + '</span>' : ''}</div>
         <div class="conv-last">${c.role === 'assistant' ? '🤖 ' : ''}${escapeHtml(c.content.slice(0, 60))}</div>
       </div>
-      <div class="conv-time">${fmtTime(c.created_at)}</div>
-    </a>`
+      <div class="conv-time">${c.ai_enabled === false ? '<span class="ai-badge">HUMANO</span>' : ''} ${fmtTime(c.created_at)}</div>
+    </a>`;
+          }
         )
         .join('')
     : '<p class="empty">Todavía no hay conversaciones.</p>';
+  const selConv = sel ? convs.find((c) => c.phone === sel) : null;
+  const selName = selConv?.nombre || sel;
+  const selAi = selConv ? selConv.ai_enabled !== false : true;
   const chatHtml =
     sel && chat
-      ? `<div class="chat-head">${escapeHtml(sel)}</div>
+      ? `<div class="chat-head">
+          <div class="chat-head-info">
+            <strong>${escapeHtml(selName)}</strong>
+            ${selConv?.nombre ? '<span class="chat-head-phone">' + escapeHtml(sel) + '</span>' : ''}
+          </div>
+          <label class="ai-toggle" title="${selAi ? 'IA activa — click para pasar a humano' : 'Modo humano — click para activar IA'}">
+            <input type="checkbox" ${selAi ? 'checked' : ''} onchange="toggleAi('${sel}',this.checked)">
+            <span class="ai-slider"></span>
+            <span class="ai-label">${selAi ? '🤖 IA' : '👤 Humano'}</span>
+          </label>
+        </div>
     <div class="chat-msgs">${chat
       .map(
         (m) =>
@@ -165,16 +190,39 @@ router.get('/dashboard/mensajes', async (req, res) => {
       )
       .join('')}</div>`
       : '<div class="chat-empty">Elegí una conversación para ver el chat</div>';
-  const content = `<h1>Mensajes</h1>
+  const content = `<style>
+.conv-num{font-size:.7rem;color:var(--mut);margin-left:6px;font-weight:400}
+.ai-badge{font-size:.6rem;background:rgba(251,191,36,.2);color:var(--warn);padding:2px 6px;border-radius:6px;font-weight:600;margin-right:4px}
+.conv-item.ai-off{opacity:.7;border-left:3px solid var(--warn)}
+.chat-head{display:flex;justify-content:space-between;align-items:center}
+.chat-head-info{display:flex;align-items:baseline;gap:8px}
+.chat-head-phone{font-size:.75rem;color:var(--mut);font-weight:400}
+.ai-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.ai-toggle input{display:none}
+.ai-slider{width:42px;height:22px;background:var(--warn);border-radius:11px;position:relative;transition:background .25s}
+.ai-slider::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .25s}
+.ai-toggle input:checked+.ai-slider{background:var(--ok)}
+.ai-toggle input:checked+.ai-slider::after{transform:translateX(20px)}
+.ai-label{font-size:.78rem;font-weight:600;min-width:65px}
+</style>
+<h1>Mensajes</h1>
 <p class="sub">Conversaciones del agente con tus clientes.</p>
 <div class="chat-wrap">
   <div class="conv-list">
-    <div class="conv-search"><input placeholder="Buscar por número..." oninput="for(const e of document.querySelectorAll('.conv-item'))e.style.display=e.textContent.includes(this.value)?'':'none'"></div>
+    <div class="conv-search"><input placeholder="Buscar por nombre o número..." oninput="for(const e of document.querySelectorAll('.conv-item'))e.style.display=e.textContent.includes(this.value)?'':'none'"></div>
     ${items}
   </div>
   <div class="chat-pane">${chatHtml}</div>
 </div>
-<script>const m=document.querySelector('.chat-msgs');if(m)m.scrollTop=m.scrollHeight;</script>`;
+<script>
+const m=document.querySelector('.chat-msgs');if(m)m.scrollTop=m.scrollHeight;
+async function toggleAi(phone,enabled){
+  try{
+    await fetch('/dashboard/api/toggle-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,enabled})});
+    location.reload();
+  }catch(e){alert('Error al cambiar modo')}
+}
+</script>`;
   res.send(renderPage({ active: 'mensajes', agentOnline: online, content, wide: true }));
 });
 

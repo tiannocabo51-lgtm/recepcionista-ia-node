@@ -3,6 +3,7 @@ const config = require('../utils/config');
 const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 const claudeService = require('../services/claudeService');
+const leadsRepo = require('../db/leads.repository');
 
 const router = express.Router();
 
@@ -33,6 +34,12 @@ router.post('/webhook', async (req, res) => {
   res.status(200).json({ status: 'received' });
 
   if (!parsed) return;
+
+  const lead = await leadsRepo.getLead(parsed.phone);
+  if (lead && !lead.ai_enabled) {
+    logger.info(`IA desactivada para ${parsed.phone}, ignorando mensaje`);
+    return;
+  }
 
   if (parsed.type === 'audio') {
     logger.info(`Audio entrante de ${parsed.phone}`);

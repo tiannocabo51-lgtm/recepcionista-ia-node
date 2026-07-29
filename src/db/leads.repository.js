@@ -61,8 +61,15 @@ async function countByEstado() {
 }
 
 async function getLead(phone) {
-  const r = await pool.query(`SELECT phone, estado, ultimo_contacto FROM leads WHERE phone = $1`, [phone]);
+  const r = await pool.query(`SELECT phone, estado, ultimo_contacto, COALESCE(ai_enabled, true) AS ai_enabled FROM leads WHERE phone = $1`, [phone]);
   return r.rows[0] || null;
 }
 
-module.exports = { ESTADOS, ensureLead, updateLead, touchContact, listLeads, countByEstado, getLead };
+async function toggleAi(phone, enabled) {
+  await pool.query(
+    `UPDATE leads SET ai_enabled = $2 WHERE phone = $1`,
+    [phone, enabled]
+  );
+}
+
+module.exports = { ESTADOS, ensureLead, updateLead, touchContact, listLeads, countByEstado, getLead, toggleAi };
