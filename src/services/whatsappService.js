@@ -78,4 +78,29 @@ async function downloadMedia(mediaId) {
   }
 }
 
-module.exports = { sendMessage, parseIncomingMessage, downloadMedia };
+async function transcribeAudio(base64Audio) {
+  const apiKey = config.groqApiKey;
+  if (!apiKey) {
+    logger.error('GROQ_API_KEY no configurada, no se puede transcribir audio');
+    return null;
+  }
+  try {
+    const buffer = Buffer.from(base64Audio, 'base64');
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+    form.append('file', buffer, { filename: 'audio.ogg', contentType: 'audio/ogg' });
+    form.append('model', 'whisper-large-v3');
+    form.append('language', 'es');
+
+    const resp = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', form, {
+      headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
+      timeout: 30000,
+    });
+    return resp.data?.text || null;
+  } catch (err) {
+    logger.error('Error transcribiendo audio:', err.response?.data || err.message);
+    return null;
+  }
+}
+
+module.exports = { sendMessage, parseIncomingMessage, downloadMedia, transcribeAudio };

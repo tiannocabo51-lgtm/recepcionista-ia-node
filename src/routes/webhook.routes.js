@@ -12,9 +12,9 @@ function isAuthorized(req) {
   return req.query.token === config.webhookVerifyToken;
 }
 
-async function processIncoming(phone, text, audioData) {
+async function processIncoming(phone, text) {
   try {
-    const reply = await claudeService.handleMessage(phone, text, audioData);
+    const reply = await claudeService.handleMessage(phone, text);
     await whatsappService.sendMessage(phone, reply);
   } catch (err) {
     logger.error(`Error procesando mensaje de ${phone}:`, err);
@@ -48,7 +48,13 @@ router.post('/webhook', async (req, res) => {
       await whatsappService.sendMessage(parsed.phone, 'No pude escuchar tu audio, ¿me lo mandás de nuevo?');
       return;
     }
-    processIncoming(parsed.phone, null, { base64, mimetype: parsed.mimetype });
+    const transcription = await whatsappService.transcribeAudio(base64);
+    if (!transcription) {
+      await whatsappService.sendMessage(parsed.phone, 'No pude entender tu audio, ¿me lo escribís por texto?');
+      return;
+    }
+    logger.info(`Audio transcrito de ${parsed.phone}: ${transcription.slice(0, 80)}`);
+    processIncoming(parsed.phone, transcription);
     return;
   }
 

@@ -24,6 +24,8 @@ const config = {
 
   webhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || null,
 
+  groqApiKey: process.env.GROQ_API_KEY || null,
+
   dashboardUser: required('DASHBOARD_USER'),
   dashboardPassword: required('DASHBOARD_PASSWORD'),
   receptionistPhone: process.env.RECEPTIONIST_PHONE || null,
