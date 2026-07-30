@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 const claudeService = require('../services/claudeService');
 const leadsRepo = require('../db/leads.repository');
+const handoffsRepo = require('../db/handoffs.repository');
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ async function processIncoming(phone, text) {
     await whatsappService.sendMessage(phone, reply);
   } catch (err) {
     logger.error(`Error procesando mensaje de ${phone}:`, err);
+    await handoffsRepo.createHandoff(phone, `Error técnico: ${err.message}`).catch(() => {});
     await whatsappService
       .sendMessage(phone, 'Perdón, tuvimos un problema técnico. Ya te derivamos con la recepcionista.')
       .catch(() => {});
