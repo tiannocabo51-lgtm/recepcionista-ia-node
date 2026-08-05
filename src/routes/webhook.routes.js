@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 const claudeService = require('../services/claudeService');
 const leadsRepo = require('../db/leads.repository');
+const followUpService = require('../services/followUpService');
 
 const router = express.Router();
 
@@ -34,6 +35,9 @@ router.post('/webhook', async (req, res) => {
   res.status(200).json({ status: 'received' });
 
   if (!parsed) return;
+
+  // Lead respondió → resetear contador de seguimientos
+  followUpService.resetFollowUp(parsed.phone).catch(() => {});
 
   const lead = await leadsRepo.getLead(parsed.phone);
   if (lead && !lead.ai_enabled) {

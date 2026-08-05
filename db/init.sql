@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS leads (
   interes           TEXT,
   notas             TEXT,
   ai_enabled        BOOLEAN NOT NULL DEFAULT true,
+  followup_count    INT NOT NULL DEFAULT 0,
+  last_followup_at  TIMESTAMPTZ,
   ultimo_contacto   TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

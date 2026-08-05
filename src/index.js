@@ -23,10 +23,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ status: 'error' });
 });
 
+const followUpService = require('./services/followUpService');
+
 const server = app.listen(config.port, () => {
   logger.info(`Servidor escuchando en el puerto ${config.port} (${config.nodeEnv})`);
   logger.info(`Webhook: POST http://localhost:${config.port}/webhook`);
   logger.info(`Health check: GET http://localhost:${config.port}/health`);
+  followUpService.start();
 });
 
 function shutdown(signal) {
