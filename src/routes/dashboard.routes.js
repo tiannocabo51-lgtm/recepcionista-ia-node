@@ -99,7 +99,6 @@ router.get('/dashboard', async (req, res) => {
     ['st-bad', 'Cancelados', cancelados, 'hoy', `${B}/dashboard/agenda`],
     ['st-info', 'Ingresos del día', '$' + ingresos.toLocaleString('es-AR'), 'estimado', `${B}/dashboard/agenda`],
     ['st-pink', 'Más ocupada', topProName, topPro ? proCounts[topPro] + ' turnos' : 'sin turnos', `${B}/dashboard/agenda`],
-    ['st-warn', 'Clientes nuevos', nuevos, 'primera vez', `${B}/dashboard/leads?estado=nuevo`],
   ]
     .map(
       ([cls, lbl, num, sub, href]) =>
@@ -208,22 +207,31 @@ router.get('/dashboard/api/agenda', async (req, res) => {
   const srvSet = [...new Set(business.servicios.map(s => s.nombre))];
   const services = srvSet.map(n => ({ n, c: '#818cf8' }));
 
+  // Status → color mapping (matches ST object in agendaView.html)
+  const STATUS_COLORS = {
+    confirmado: '#34d399', pendiente: '#fbbf24', curso: '#38bdf8',
+    finalizado: '#8b96ad', cancelado: '#f87171', noasistio: '#c084fc',
+  };
+
   // Map DB rows to the format agendaView.html expects
-  const appointments = appts.map(a => ({
-    id: a.id,
-    name: a.name,
-    phone: a.phone,
-    srv: a.service,
-    date: a.appointment_date,
-    from: a.from_min != null ? a.from_min : (parseInt(a.appointment_time) * 60 + parseInt((a.appointment_time || '0:0').split(':')[1] || 0)),
-    dur: a.duration || 30,
-    st: a.status || 'pendiente',
-    color: a.color || null,
-    pro: a.professional || 1,
-    price: a.price || 0,
-    deposit: a.deposit || 0,
-    notes: a.notes || '',
-  }));
+  const appointments = appts.map(a => {
+    const st = a.status || 'pendiente';
+    return {
+      id: a.id,
+      name: a.name,
+      phone: a.phone,
+      srv: a.service,
+      date: a.appointment_date,
+      from: a.from_min != null ? a.from_min : (parseInt(a.appointment_time) * 60 + parseInt((a.appointment_time || '0:0').split(':')[1] || 0)),
+      dur: a.duration || 30,
+      st,
+      color: a.color || STATUS_COLORS[st] || '#818cf8',
+      pro: a.professional || 1,
+      price: a.price || 0,
+      deposit: a.deposit || 0,
+      notes: a.notes || '',
+    };
+  });
 
   const blocksList = blocks.map(b => ({
     id: b.id,

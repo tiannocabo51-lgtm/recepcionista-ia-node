@@ -90,6 +90,41 @@ async function resetFollowUp(phone) {
   );
 }
 
+// ── Confirmación de turnos ──────────────────────────────────────────────
+
+// Busca turnos de mañana que todavía están en "pendiente"
+async function getPendingAppointments() {
+  const result = await pool.query(
+    `SELECT a.id, a.name, a.phone, a.service,
+            a.appointment_date::text AS appointment_date,
+            a.appointment_time::text AS appointment_time,
+            a.status
+     FROM appointments a
+     WHERE a.appointment_date = CURRENT_DATE + interval '1 day'
+       AND a.status = 'pendiente'
+       AND a.phone IS NOT NULL AND a.phone != ''
+     ORDER BY a.appointment_time`
+  );
+  return result.rows;
+}
+
+// Genera mensaje de confirmación personalizado
+async function generateConfirmation(appt) {
+  try {
+    const dayName = new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long' });
+    const time = appt.appointment_time.slice(0, 5);
+
+    const reply = await claudeService.handleMessage(
+      appt.phone,
+      `[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Mandá un mensaje corto y cálido para confirmar el turno de mañana. Datos: ${appt.name}, ${appt.service}, mañana ${dayName} a las ${time}hs. Preguntale si confirma. No digas "te escribo para confirmar tu turno" ni nada robótico, soná natural como una recepcionista que le recuerda. Si dice que sí, confirmalo. Si dice que no puede, ofrecé reprogramar.`
+    );
+    return reply;
+  } catch (err) {
+    logger.error(`[Followup] Error generando confirmación para ${appt.phone}:`, err.message);
+    return null;
+  }
+}
+
 // ── Loop principal ──────────────────────────────────────────────────────
 
 async function runFollowUps() {
@@ -99,16 +134,13 @@ async function runFollowUps() {
   }
 
   try {
+    // 1. Seguimiento de leads fríos
     const staleLeads = await getStaleLeads();
-    if (!staleLeads.length) {
-      logger.info('[Followup] Sin leads para seguimiento');
-      return;
+    if (staleLeads.length) {
+      logger.info(`[Followup] ${staleLeads.length} leads para seguimiento`);
     }
 
-    logger.info(`[Followup] ${staleLeads.length} leads para seguimiento`);
-
     for (const lead of staleLeads) {
-      // Esperar entre mensajes para no triggerear antispam (30-60 seg)
       if (staleLeads.indexOf(lead) > 0) {
         const delay = 30000 + Math.random() * 30000;
         await new Promise((r) => setTimeout(r, delay));
@@ -122,7 +154,6 @@ async function runFollowUps() {
         await markFollowUp(lead.phone);
         logger.info(`[Followup] Seguimiento #${lead.followup_count + 1} enviado a ${lead.phone}${lead.nombre ? ` (${lead.nombre})` : ''}`);
 
-        // Notificar al dueño
         if (business.whatsappHumano) {
           whatsappService.sendMessage(
             business.whatsappHumano,
@@ -130,6 +161,37 @@ async function runFollowUps() {
           ).catch(() => {});
         }
       }
+    }
+
+    // 2. Confirmación de turnos de mañana
+    const pendingAppts = await getPendingAppointments();
+    if (pendingAppts.length) {
+      logger.info(`[Followup] ${pendingAppts.length} turnos pendientes para confirmar (mañana)`);
+    }
+
+    for (const appt of pendingAppts) {
+      // Esperar entre mensajes
+      const delay = 30000 + Math.random() * 30000;
+      await new Promise((r) => setTimeout(r, delay));
+
+      const msg = await generateConfirmation(appt);
+      if (!msg) continue;
+
+      const sent = await whatsappService.sendMessage(appt.phone, msg);
+      if (sent) {
+        logger.info(`[Followup] Confirmación enviada a ${appt.phone} (${appt.name}) — ${appt.service} mañana ${appt.appointment_time.slice(0, 5)}`);
+
+        if (business.whatsappHumano) {
+          whatsappService.sendMessage(
+            business.whatsappHumano,
+            `📅 Confirmación de turno enviada a ${appt.name} (${appt.phone}) — ${appt.service} mañana a las ${appt.appointment_time.slice(0, 5)}`
+          ).catch(() => {});
+        }
+      }
+    }
+
+    if (!staleLeads.length && !pendingAppts.length) {
+      logger.info('[Followup] Sin seguimientos ni confirmaciones pendientes');
     }
   } catch (err) {
     logger.error('[Followup] Error en ciclo de seguimiento:', err.message);

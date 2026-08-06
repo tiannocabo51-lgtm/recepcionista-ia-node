@@ -51,6 +51,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'cambiar_estado_turno',
+    description:
+      'Cambia el estado de un turno existente. Usar cuando la clienta confirma, cancela o quiere reprogramar su turno. ' +
+      'Estados posibles: "confirmado" (cliente confirmó que va), "cancelado" (cliente cancela). ' +
+      'Buscar el turno por teléfono del cliente actual.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['confirmado', 'cancelado'], description: 'Nuevo estado del turno' },
+        reason: { type: 'string', description: 'Motivo del cambio, opcional' },
+      },
+      required: ['status'],
+    },
+  },
+  {
     name: 'derivar_recepcionista',
     description:
       'Deriva la conversación a la recepcionista humana. Usar ante quejas graves, temas médicos, ' +
@@ -95,6 +110,28 @@ async function executeTool(name, input, phone) {
       });
     }
     return JSON.stringify({ ok: false, error: result.error });
+  }
+
+  if (name === 'cambiar_estado_turno') {
+    try {
+      // Find the client's upcoming appointment
+      const upcoming = await appointmentsRepo.findUpcomingByPhone(phone);
+      if (!upcoming.length) {
+        return JSON.stringify({ ok: false, error: 'No se encontró un turno próximo para este número' });
+      }
+      const appt = upcoming[0]; // most recent upcoming
+      const poolDb = require('../db/pool');
+      await poolDb.query('UPDATE appointments SET status=$1 WHERE id=$2', [input.status, appt.id]);
+      const statusLabel = input.status === 'confirmado' ? '✅ Confirmado' : '❌ Cancelado';
+      notifyOwner(
+        `${statusLabel}\nCliente: ${appt.name} (${phone})\nServicio: ${appt.service}\nFecha: ${appt.appointment_date} ${appt.appointment_time}` +
+        (input.reason ? `\nMotivo: ${input.reason}` : '')
+      );
+      return JSON.stringify({ ok: true, turno: { nombre: appt.name, servicio: appt.service, fecha: appt.appointment_date, hora: appt.appointment_time, estado: input.status } });
+    } catch (err) {
+      logger.error('Error al cambiar estado del turno:', err.message);
+      return JSON.stringify({ ok: false, error: 'No se pudo actualizar el turno' });
+    }
   }
 
   if (name === 'clasificar_lead') {

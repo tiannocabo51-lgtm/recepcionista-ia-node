@@ -70,14 +70,22 @@ async function createAppointment({ name, service, date, time, phone, notes }) {
   }
 
   try {
-    const appointment = await appointmentsRepo.createAppointment({
+    const svc = findService(service);
+    const duration = svc ? svc.duracionMinutos : DEFAULT_DURATION_MIN;
+    const price = svc ? svc.precio : 0;
+    const appointment = await appointmentsRepo.saveFull({
       name,
-      service,
+      service: svc ? svc.nombre : service,
       date,
       time,
       phone,
       notes,
       status: 'confirmado',
+      duration,
+      price,
+      deposit: 0,
+      color: null,
+      professional: 1,
     });
     return { ok: true, appointment };
   } catch (err) {
