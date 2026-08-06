@@ -25,6 +25,11 @@ const MIGRATIONS = [
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS followup_count INT DEFAULT 0`,
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ`,
   `ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT true`,
+  // Index for conversation lookups
+  `CREATE INDEX IF NOT EXISTS idx_conversations_phone_created ON conversations(phone, created_at DESC)`,
+  // Index for appointment date lookups
+  `CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_appointments_phone ON appointments(phone)`,
 ];
 
 async function runMigrations() {

@@ -9,7 +9,15 @@ async function createHandoff(phone, reason) {
 
 async function findRecent(limit = 20) {
   const result = await pool.query(
-    `SELECT phone, reason, created_at FROM handoffs ORDER BY created_at DESC LIMIT $1`,
+    `SELECT h.phone, h.reason, h.created_at,
+            COALESCE(l.nombre, a.name) AS nombre
+     FROM handoffs h
+     LEFT JOIN leads l ON l.phone = h.phone
+     LEFT JOIN LATERAL (
+       SELECT name FROM appointments WHERE appointments.phone = h.phone
+       ORDER BY created_at DESC LIMIT 1
+     ) a ON true
+     ORDER BY h.created_at DESC LIMIT $1`,
     [limit]
   );
   return result.rows;

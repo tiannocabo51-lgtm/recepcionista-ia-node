@@ -36,11 +36,23 @@ async function agentOnline() {
 }
 
 function fmtTime(d) {
-  return new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function timeAgo(d) {
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'ahora';
+  if (mins < 60) return `hace ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `hace ${days}d`;
+  return fmtTime(d);
 }
 
 function fmtDay(d) {
-  return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+  return new Date(d).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit' });
 }
 
 function today() {
@@ -425,11 +437,11 @@ router.get('/dashboard/derivaciones', async (req, res) => {
           (h) => `
     <div class="hand-card">
       <div class="hand-info">
-        <div class="hphone">${escapeHtml(h.phone)}</div>
-        <div class="hdate">${fmtTime(h.created_at)}</div>
+        <div class="hphone">${escapeHtml(h.nombre || h.phone)}${h.nombre ? '<span style="color:var(--mut);font-size:.75rem;margin-left:8px">' + escapeHtml(h.phone) + '</span>' : ''}</div>
+        <div class="hdate">${timeAgo(h.created_at)}</div>
         <div class="hreason">${escapeHtml(h.reason)}</div>
       </div>
-      <div><a class="btn" href="${B}/dashboard/mensajes?phone=${encodeURIComponent(h.phone)}">Ver conversación</a></div>
+      <div><a class="btn" href="${B}/dashboard/mensajes?phone=${encodeURIComponent(h.phone)}">Ver chat</a></div>
     </div>`
         )
         .join('')
@@ -481,7 +493,7 @@ router.get('/dashboard/leads', async (req, res) => {
           + '<div class="lead-main"><div class="lead-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
           + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
           + '<div class="lead-tags"><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span>' + chipsFor(l.interes) + '</div>'
-          + '<div class="lead-when">' + fmtTime(l.ultimo_contacto) + '</div>'
+          + '<div class="lead-when">' + timeAgo(l.ultimo_contacto) + '</div>'
           + '<a class="btn lead-btn" href="' + B + '/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
           + '</div>';
       }).join('')
@@ -513,9 +525,13 @@ router.get('/dashboard/leads', async (req, res) => {
     ? '<div class="kanban">' + columnas + '</div>'
     : (filtro ? '<div class="toolbar"><a class="btn" href="' + B + '/dashboard/leads">Ver todos</a></div>' : '') + rows;
 
-  const filtroLabel = vista === 'lista' && filtro && ESTADO_INFO[filtro] ? ' Mostrando: ' + ESTADO_INFO[filtro][1] : ' Clientes clasificados automaticamente.';
+  const totalLeads = Object.values(counts).reduce((s, n) => s + n, 0);
+  const filtroLabel = vista === 'lista' && filtro && ESTADO_INFO[filtro] ? ' Mostrando: ' + ESTADO_INFO[filtro][1] : ` ${totalLeads} clientes en el CRM.`;
 
   const content = '<style>'
+    + '.lead-search{margin-bottom:16px;display:flex;gap:8px}'
+    + '.lead-search input{flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--txt);font-size:.88rem;outline:none}'
+    + '.lead-search input:focus{border-color:var(--acc2)}'
     + '.lead-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}'
     + '.lead-card{display:flex;flex-direction:column;gap:4px;padding:18px;border-radius:14px;border:1px solid var(--line);background:var(--card);text-decoration:none;color:var(--txt);transition:transform .16s,border-color .16s}'
     + '.lead-card:hover{transform:translateY(-2px)}'
@@ -550,7 +566,9 @@ router.get('/dashboard/leads', async (req, res) => {
     + '<h1>Leads</h1><p class="sub">' + filtroLabel + '</p>'
     + '<div class="lead-cards">' + cards + '</div>'
     + toggle
-    + cuerpo;
+    + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"></div>' : '')
+    + cuerpo
+    + '<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}</script>';
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true }));
 });
 
@@ -582,6 +600,27 @@ router.get('/dashboard/ajustes', async (req, res) => {
     ? listaBlocked.map((p) => `<div class="block-item"><span>${escapeHtml(p)}</span><button class="btn btn-sm btn-danger" onclick="unblock('${escapeHtml(p)}')">Quitar</button></div>`).join('')
     : '<p class="empty">No hay contactos bloqueados.</p>';
 
+  // Build services grouped by category
+  const svcByCategory = {};
+  business.servicios.forEach(s => {
+    if (!svcByCategory[s.categoria]) svcByCategory[s.categoria] = [];
+    svcByCategory[s.categoria].push(s);
+  });
+  const svcHtml = Object.entries(svcByCategory).map(([cat, svcs]) =>
+    `<div class="svc-cat"><h4>${escapeHtml(cat)} <span class="svc-count">${svcs.length}</span></h4>`
+    + svcs.map(s => `<div class="svc-row"><span class="svc-name">${escapeHtml(s.nombre)}</span><span class="svc-dur">${s.duracionMinutos}min</span><span class="svc-price">${s.precio ? '$' + s.precio.toLocaleString('es-AR') : 'Gratis'}</span></div>`).join('')
+    + '</div>'
+  ).join('');
+
+  // Promotions with expiry check
+  const todayStr = today();
+  const promoHtml = business.promociones.length
+    ? business.promociones.map(p => {
+        const expired = p.vigenteHasta && p.vigenteHasta < todayStr;
+        return `<div class="promo-item${expired ? ' promo-expired' : ''}"><strong>${escapeHtml(p.nombre)}</strong> — ${escapeHtml(p.descripcion)} <span class="promo-date">${expired ? '⚠️ Vencida' : 'Hasta ' + p.vigenteHasta}</span></div>`;
+      }).join('')
+    : '<p class="empty">Sin promociones configuradas.</p>';
+
   const content = `<style>
 .block-section{margin-top:28px;padding:20px;background:var(--card);border:1px solid var(--line);border-radius:14px}
 .block-section h3{margin-bottom:12px;font-size:.95rem}
@@ -592,6 +631,20 @@ router.get('/dashboard/ajustes', async (req, res) => {
 .btn-sm{padding:4px 12px;font-size:.78rem}
 .btn-danger{background:rgba(248,113,113,.2);color:#f87171;border:1px solid rgba(248,113,113,.3)}
 .btn-danger:hover{background:rgba(248,113,113,.35)}
+.svc-cat{margin-bottom:16px}
+.svc-cat h4{font-size:.85rem;color:var(--acc2);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.svc-count{font-size:.7rem;background:var(--card2);border-radius:999px;padding:1px 8px;color:var(--mut)}
+.svc-row{display:flex;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:.82rem}
+.svc-row:last-child{border-bottom:none}
+.svc-name{flex:1;font-weight:500}.svc-dur{color:var(--mut);width:60px;text-align:right}.svc-price{font-weight:600;width:90px;text-align:right;color:var(--ok)}
+.promo-item{padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:.85rem}
+.promo-expired{opacity:.6;border-color:var(--bad)}
+.promo-date{font-size:.72rem;color:var(--mut);margin-left:8px}
+.promo-expired .promo-date{color:var(--bad)}
+.sys-info{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.sys-badge{padding:8px 14px;background:var(--card2);border-radius:8px;font-size:.78rem;display:flex;justify-content:space-between}
+.sys-badge .sys-v{color:var(--ok);font-weight:600}
+@media(max-width:640px){.sys-info{grid-template-columns:1fr}.svc-row{flex-wrap:wrap;gap:4px}}
 </style>
 <h1>Ajustes</h1>
 <p class="sub">Configuración actual del agente.</p>
@@ -604,7 +657,17 @@ router.get('/dashboard/ajustes', async (req, res) => {
   <dt>Horarios</dt><dd>${horarios}</dd>
   <dt>Servicios cargados</dt><dd>${business.servicios.length}</dd>
   <dt>Usuario del panel</dt><dd>${escapeHtml(config.dashboardUser)}</dd>
+  <dt>Modelo IA</dt><dd>${escapeHtml(config.claudeModel)}</dd>
+  <dt>Audio (Groq)</dt><dd>${config.groqApiKey ? '✅ Configurado' : '❌ No configurado'}</dd>
 </dl>
+<div class="block-section">
+  <h3>📋 Servicios y precios (${business.servicios.length})</h3>
+  ${svcHtml}
+</div>
+<div class="block-section">
+  <h3>🎁 Promociones</h3>
+  ${promoHtml}
+</div>
 <div class="block-section">
   <h3>🚫 Contactos bloqueados (la IA no les responde)</h3>
   <div class="block-list">${bloqueados}</div>
@@ -631,6 +694,27 @@ async function unblock(phone){
 }
 </script>`;
   res.send(renderPage({ active: 'ajustes', agentOnline: online, content }));
+});
+
+// ── API: System stats ───────────────────────────────────────────────────
+router.get('/dashboard/api/stats', async (req, res) => {
+  try {
+    const pool = require('../db/pool');
+    const [convCount, leadCount, apptCount] = await Promise.all([
+      pool.query('SELECT COUNT(*)::int AS n FROM conversations'),
+      pool.query('SELECT COUNT(*)::int AS n FROM leads'),
+      pool.query('SELECT COUNT(*)::int AS n FROM appointments'),
+    ]);
+    res.json({
+      conversations: convCount.rows[0].n,
+      leads: leadCount.rows[0].n,
+      appointments: apptCount.rows[0].n,
+      uptime: Math.floor(process.uptime()),
+      memory: Math.round(process.memoryUsage().rss / 1048576),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
