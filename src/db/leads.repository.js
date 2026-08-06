@@ -72,4 +72,8 @@ async function toggleAi(phone, enabled) {
   );
 }
 
-module.exports = { ESTADOS, ensureLead, updateLead, touchContact, listLeads, countByEstado, getLead, toggleAi };
+async function updateEstado(phone, estado) {
+  await pool.query(`UPDATE leads SET estado = $2 WHERE phone = $1`, [phone, estado]);
+}
+
+module.exports = { ESTADOS, ensureLead, updateLead, touchContact, listLeads, countByEstado, getLead, toggleAi, updateEstado };

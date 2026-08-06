@@ -84,6 +84,16 @@ router.delete('/dashboard/api/notes/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/dashboard/api/lead-status', express.json(), async (req, res) => {
+  const { phone, estado } = req.body;
+  const valid = ['nuevo','consultando','turno','cliente','frio'];
+  if (!phone || !valid.includes(estado)) return res.status(400).json({ error: 'phone and valid estado required' });
+  try {
+    await leadsRepo.updateEstado(phone, estado);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
   const { phone, enabled } = req.body;
   if (!phone) return res.status(400).json({ error: 'phone required' });
@@ -159,7 +169,7 @@ router.get('/dashboard', async (req, res) => {
   const t = today();
   const pool = require('../db/pool');
   const mesActual = t.slice(0, 7); // YYYY-MM
-  const [online, turnosHoyAll, nuevos, derivs, derivs24h, proximos, convs, activity, mesIngresos] = await Promise.all([
+  const [online, turnosHoyAll, nuevos, derivs, derivs24h, proximos, convs, activity, mesIngresos, weekRevenue] = await Promise.all([
     agentOnline(),
     appointmentsRepo.findRange(t, t),
     conversationsRepo.countNewClientsToday(),
@@ -169,6 +179,7 @@ router.get('/dashboard', async (req, res) => {
     conversationsRepo.listConversations(),
     conversationsRepo.activityLast7Days(),
     pool.query(`SELECT COALESCE(SUM(price),0)::numeric AS total, COUNT(*)::int AS cnt FROM appointments WHERE appointment_date >= date_trunc('month', CURRENT_DATE) AND status IN ('finalizado','curso','confirmado')`),
+    pool.query(`SELECT d::date AS day, COALESCE(SUM(a.price),0)::numeric AS rev FROM generate_series(CURRENT_DATE - interval '6 days', CURRENT_DATE, '1 day') d LEFT JOIN appointments a ON a.appointment_date = d AND a.status IN ('finalizado','curso','confirmado') GROUP BY d ORDER BY d`),
   ]);
   const ingresosMes = parseFloat(mesIngresos.rows[0]?.total || 0);
   const turnosMes = mesIngresos.rows[0]?.cnt || 0;
@@ -221,23 +232,58 @@ router.get('/dashboard', async (req, res) => {
     return `<div class="act-col"><div class="act-bar-area"><div class="act-bar" style="height:${Math.max(pct, 5)}%"></div></div><div class="act-num">${a.n}</div><div class="act-day">${dayName}</div></div>`;
   }).join('');
 
+  // Weekly revenue chart
+  const maxRev = Math.max(...weekRevenue.rows.map(r => parseFloat(r.rev)), 1);
+  const revBars = weekRevenue.rows.map(r => {
+    const rev = parseFloat(r.rev);
+    const pct = Math.round((rev / maxRev) * 100);
+    const dayName = new Date(r.day + 'T12:00:00').toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short' });
+    return `<div class="act-col"><div class="act-bar-area"><div class="rev-bar" style="height:${Math.max(pct, 5)}%"></div></div><div class="act-num">$${rev > 0 ? Math.round(rev).toLocaleString('es-AR') : '0'}</div><div class="act-day">${dayName}</div></div>`;
+  }).join('');
+
+  // Next appointment countdown
+  const now = new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const nowDate = new Date(now);
+  const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
+  const nextTurno = turnosHoyAll
+    .filter(a => ['pendiente','confirmado'].includes(a.status))
+    .map(a => { const [h,m] = a.appointment_time.split(':').map(Number); return { ...a, mins: h*60+m }; })
+    .filter(a => a.mins > nowMins)
+    .sort((a,b) => a.mins - b.mins)[0];
+  const countdownHtml = nextTurno
+    ? `<div class="countdown-box"><div class="cd-label">⏰ Próximo turno en</div><div class="cd-time" id="cdTime" data-target="${nextTurno.mins}">${Math.floor((nextTurno.mins - nowMins)/60)}h ${(nextTurno.mins - nowMins)%60}min</div><div class="cd-info">${escapeHtml(nextTurno.name)} · ${escapeHtml(nextTurno.service)} · ${nextTurno.appointment_time.slice(0,5)}</div></div>`
+    : '';
+
   const content = `${HOME_CSS}
 <style>
 .act-wrap{display:flex;gap:8px;align-items:flex-end;height:120px;padding:12px 0 0}
 .act-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
 .act-bar-area{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;min-height:0}
 .act-bar{width:100%;max-width:32px;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:6px 6px 0 0;min-height:4px}
+.rev-bar{width:100%;max-width:32px;background:linear-gradient(180deg,#f472b6,#a855f7);border-radius:6px 6px 0 0;min-height:4px}
 .act-num{font-size:.72rem;font-weight:700;color:var(--txt)}
 .act-day{font-size:.66rem;color:var(--mut);text-transform:capitalize}
+.countdown-box{background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(244,114,182,.12));border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.cd-label{font-size:.78rem;color:var(--mut);font-weight:600}
+.cd-time{font-size:1.6rem;font-weight:700;color:var(--acc2);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.cd-info{font-size:.82rem;color:var(--txt);margin-left:auto}
+@media(max-width:640px){.countdown-box{flex-direction:column;align-items:flex-start;gap:6px}.cd-info{margin-left:0}}
 </style>
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
+${countdownHtml}
 <div class="st-cards">${stats}</div>
 <div class="cols">
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
   <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
 </div>
-<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-wrap">${actBars}</div></div>
-<script>setTimeout(()=>location.reload(),60000)</script>`;
+<div class="cols" style="margin-top:16px">
+  <div class="panel"><h3>📊 Actividad 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-wrap">${actBars}</div></div>
+  <div class="panel"><h3>💰 Ingresos 7 días</h3><div class="act-wrap">${revBars}</div></div>
+</div>
+<script>
+setTimeout(()=>location.reload(),60000);
+(function(){var el=document.getElementById('cdTime');if(!el)return;var tgt=parseInt(el.dataset.target);setInterval(function(){var n=new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires'});var d=new Date(n);var now=d.getHours()*60+d.getMinutes();var diff=tgt-now;if(diff<=0){el.textContent='¡Ahora!';return}var h=Math.floor(diff/60),m=diff%60;el.textContent=(h?h+'h ':'')+m+'min'},30000)})();
+</script>`;
   const badges = {};
   if (derivs24h > 0) badges.derivaciones = derivs24h;
   if (pendientes > 0) badges.agenda = pendientes;
@@ -723,11 +769,14 @@ router.get('/dashboard/leads', async (req, res) => {
   const rows = leads.length
     ? leads.map((l) => {
         const inicial = (l.nombre || l.phone).trim().charAt(0).toUpperCase();
+        const statusOpts = Object.entries(ESTADO_INFO).map(([e,info]) =>
+          '<option value="' + e + '"' + (e === l.estado ? ' selected' : '') + '>' + info[0] + ' ' + info[1] + '</option>'
+        ).join('');
         return '<div class="lead-row">'
           + '<div class="lead-av">' + escapeHtml(inicial) + '</div>'
           + '<div class="lead-main"><div class="lead-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
           + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
-          + '<div class="lead-tags"><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span>' + chipsFor(l.interes) + '</div>'
+          + '<div class="lead-tags"><select class="lead-status-sel" data-phone="' + escapeHtml(l.phone) + '">' + statusOpts + '</select>' + chipsFor(l.interes) + '</div>'
           + '<div class="lead-when">' + timeAgo(l.ultimo_contacto) + '</div>'
           + '<a class="btn lead-btn" href="' + B + '/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
           + '</div>';
@@ -795,7 +844,9 @@ router.get('/dashboard/leads', async (req, res) => {
     + '.kan-name{font-weight:600;font-size:.82rem}.kan-phone{font-size:.72rem;color:var(--mut);margin-top:2px}'
     + '.kan-chips{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}'
     + '.kan-empty{color:var(--mut);text-align:center;padding:16px;font-size:.8rem}'
-    + '@media(max-width:900px){.kanban{grid-template-columns:1fr;}.kan-col{min-height:auto}}'
+    + '.lead-status-sel{padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:.76rem;cursor:pointer;outline:none}'
+    + '.lead-status-sel:focus{border-color:var(--acc2)}'
+    + '@media(max-width:900px){.kanban{grid-template-columns:repeat(5,minmax(160px,1fr));overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px}.kan-col{min-height:auto;min-width:160px}}'
     + '@media(max-width:640px){.lead-row{flex-wrap:wrap}}'
     + '</style>'
     + '<h1>Leads</h1><p class="sub">' + filtroLabel + '</p>'
@@ -803,7 +854,8 @@ router.get('/dashboard/leads', async (req, res) => {
     + toggle
     + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"><a class="btn" href="' + B + '/dashboard/api/leads/export" title="Exportar CSV">📥 CSV</a></div>' : '')
     + cuerpo
-    + '<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}</script>';
+    + `<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}
+document.querySelectorAll('.lead-status-sel').forEach(function(sel){sel.onchange=async function(){var ph=this.dataset.phone,est=this.value;try{var r=await fetch('${B}/dashboard/api/lead-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ph,estado:est})});if(r.ok)location.reload();else alert('Error')}catch(e){alert('Error al cambiar estado')}}});</script>`;
   const badges = await getNavBadges();
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true, badges }));
 });
