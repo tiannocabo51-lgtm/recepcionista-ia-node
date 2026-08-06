@@ -50,12 +50,20 @@ function today() {
 const HOME_CSS = `<style>
   .hero { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:28px; }
   .hero .date { color:var(--mut); font-size:.9rem; text-transform:capitalize; }
-  .chip { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.25rem; margin-bottom:14px; }
-  .chip1 { background:rgba(99,102,241,.18); }
-  .chip2 { background:rgba(52,211,153,.15); }
-  .chip3 { background:rgba(251,191,36,.15); }
-  .chip4 { background:rgba(248,113,113,.15); }
-  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:28px; }
+  .st-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:28px; }
+  .st { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; position:relative; overflow:hidden; text-decoration:none; color:inherit; transition:transform .16s, border-color .16s; display:block; }
+  .st:hover { transform:translateY(-2px); border-color:var(--acc2); }
+  .st::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3.5px; }
+  .st .l { font-size:.7rem; color:var(--mut); text-transform:uppercase; letter-spacing:.07em; font-weight:650; }
+  .st .v { font-size:1.7rem; font-weight:700; letter-spacing:-.03em; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .st .d { font-size:.72rem; color:var(--mut); margin-top:2px; }
+  .st-acc::before { background:var(--acc); }
+  .st-ok::before { background:var(--ok); }
+  .st-warn::before { background:var(--warn); }
+  .st-bad::before { background:var(--bad); }
+  .st-info::before { background:#38bdf8; }
+  .st-pink::before { background:#f472b6; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .panel { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }
   .panel h3 { font-size:.95rem; margin-bottom:10px; }
   .panel h3 a { float:right; font-size:.75rem; color:var(--acc2); text-decoration:none; font-weight:400; }
@@ -63,32 +71,39 @@ const HOME_CSS = `<style>
   .mini:last-child { border-bottom:none; }
   .mini-sub { display:block; color:var(--mut); font-size:.75rem; margin-top:2px; }
   .mini-right { color:var(--mut); font-size:.78rem; white-space:nowrap; }
-  @media (max-width:760px) { .cols { grid-template-columns:1fr; } }
+  @media (max-width:760px) { .cols { grid-template-columns:1fr; } .st-cards { grid-template-columns:repeat(2,1fr); gap:10px; } .st .v { font-size:1.4rem; } }
 </style>`;
 
 router.get('/dashboard', async (req, res) => {
   const t = today();
-  const [online, turnosHoy, msgs, nuevos, derivs, proximos, convs] = await Promise.all([
+  const [online, turnosHoyAll, nuevos, derivs, proximos, convs] = await Promise.all([
     agentOnline(),
-    appointmentsRepo.findByDateRange(t, t),
-    conversationsRepo.countToday(),
+    appointmentsRepo.findRange(t, t),
     conversationsRepo.countNewClientsToday(),
     handoffsRepo.countToday(),
     appointmentsRepo.findUpcoming(5),
     conversationsRepo.listConversations(),
   ]);
-  const confirmados = turnosHoy.filter(a => a.status === 'confirmado').length;
-  const cancelados = turnosHoy.filter(a => a.status === 'cancelado').length;
-  const pendientes = turnosHoy.filter(a => a.status === 'pendiente').length;
+  const confirmados = turnosHoyAll.filter(a => ['confirmado','curso','finalizado'].includes(a.status)).length;
+  const cancelados = turnosHoyAll.filter(a => ['cancelado','noasistio'].includes(a.status)).length;
+  const pendientes = turnosHoyAll.filter(a => a.status === 'pendiente').length;
+  const ingresos = turnosHoyAll.filter(a => ['finalizado','curso','confirmado'].includes(a.status)).reduce((s, a) => s + (parseFloat(a.price) || 0), 0);
+  const proCounts = {};
+  turnosHoyAll.filter(a => a.status !== 'cancelado').forEach(a => { proCounts[a.professional || 1] = (proCounts[a.professional || 1] || 0) + 1; });
+  const topPro = Object.keys(proCounts).sort((a, b) => proCounts[b] - proCounts[a])[0];
+  const topProName = topPro ? (business.nombreRecepcionista || 'Profesional') : '—';
+  const clientasNuevas = turnosHoyAll.filter(a => a.status !== 'cancelado').length; // approximate
   const stats = [
-    ['chip1', '📅', 'Turnos hoy', turnosHoy.length, `${confirmados} confirmados · ${pendientes} pendientes`, `${B}/dashboard/agenda`],
-    ['chip2', '✅', 'Confirmados', confirmados, 'listos para atender', `${B}/dashboard/agenda`],
-    ['chip3', '✨', 'Clientes nuevos', nuevos, 'primera vez hoy', `${B}/dashboard/leads?estado=nuevo`],
-    ['chip4', '🙋', 'Derivaciones', derivs, 'pasadas a humano', `${B}/dashboard/derivaciones`],
+    ['st-acc', 'Turnos hoy', turnosHoyAll.length, `${confirmados} confirmados`, `${B}/dashboard/agenda`],
+    ['st-ok', 'Confirmados', confirmados, 'listos para atender', `${B}/dashboard/agenda`],
+    ['st-bad', 'Cancelados', cancelados, 'hoy', `${B}/dashboard/agenda`],
+    ['st-info', 'Ingresos del día', '$' + ingresos.toLocaleString('es-AR'), 'estimado', `${B}/dashboard/agenda`],
+    ['st-pink', 'Más ocupada', topProName, topPro ? proCounts[topPro] + ' turnos' : 'sin turnos', `${B}/dashboard/agenda`],
+    ['st-warn', 'Clientes nuevos', nuevos, 'primera vez', `${B}/dashboard/leads?estado=nuevo`],
   ]
     .map(
-      ([cls, ico, lbl, num, sub, href]) =>
-        `<a class="card" href="${href}" style="text-decoration:none;color:inherit"><div class="chip ${cls}">${ico}</div><div class="num">${num}</div><div class="lbl">${lbl}</div><div class="lbl" style="margin-top:2px;font-size:.7rem">${sub}</div></a>`
+      ([cls, lbl, num, sub, href]) =>
+        `<a class="st ${cls}" href="${href}"><div class="l">${lbl}</div><div class="v">${num}</div><div class="d">${sub}</div></a>`
     )
     .join('');
   const turnosList = proximos.length
@@ -111,7 +126,7 @@ router.get('/dashboard', async (req, res) => {
   const hoyLabel = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
   const content = `${HOME_CSS}
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
-<div class="cards">${stats}</div>
+<div class="st-cards">${stats}</div>
 <div class="cols">
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
   <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
