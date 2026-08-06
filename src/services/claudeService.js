@@ -18,8 +18,10 @@ const TOOLS = [
   {
     name: 'crear_turno',
     description:
-      'Guarda un turno para la clienta. Usar solo cuando ya se sabe el nombre completo, ' +
-      'el servicio, la fecha y la hora. Si falta algún dato, hay que preguntarlo antes de llamar esta herramienta.',
+      'Guarda un turno para la clienta. IMPORTANTE: NO llamar esta herramienta apenas tengas los datos. ' +
+      'Primero resumí el turno al cliente (nombre, servicio, fecha, hora) y ESPERÁ a que confirme con un "sí", "dale", "perfecto", etc. ' +
+      'Recién cuando el cliente confirme explícitamente, llamá esta herramienta. ' +
+      'Si falta algún dato (nombre, servicio, fecha u hora), preguntalo antes.',
     input_schema: {
       type: 'object',
       properties: {

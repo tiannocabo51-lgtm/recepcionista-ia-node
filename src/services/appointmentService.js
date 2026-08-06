@@ -64,6 +64,17 @@ async function createAppointment({ name, service, date, time, phone, notes }) {
     return { ok: false, error: 'La hora debe tener formato HH:MM (24hs).' };
   }
 
+  // Check if this client already has an appointment at this date/time (duplicate prevention)
+  const existing = await appointmentsRepo.findUpcomingByPhone(phone);
+  const duplicate = existing.find(a =>
+    a.appointment_date.toISOString().slice(0, 10) === date &&
+    a.appointment_time.slice(0, 5) === time &&
+    a.status !== 'cancelado'
+  );
+  if (duplicate) {
+    return { ok: true, appointment: duplicate, alreadyExisted: true };
+  }
+
   const availability = await checkAvailability({ date, time, service });
   if (!availability.available) {
     return { ok: false, error: availability.reason };
