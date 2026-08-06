@@ -29,6 +29,7 @@ const config = {
   dashboardUser: required('DASHBOARD_USER'),
   dashboardPassword: required('DASHBOARD_PASSWORD'),
   receptionistPhone: process.env.RECEPTIONIST_PHONE || null,
+  basePath: (process.env.BASE_PATH || '').replace(/\/+$/, ''),
 };
 
 module.exports = config;

@@ -1,4 +1,5 @@
 const business = require('./businessConfig');
+const config = require('./config');
 
 function escapeHtml(str) {
   return String(str)
@@ -8,13 +9,15 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+const B = config.basePath; // e.g. '/simaxface' or ''
+
 const NAV = [
-  ['inicio', 'Inicio', '/dashboard'],
-  ['agenda', 'Agenda', '/dashboard/agenda'],
-  ['mensajes', 'Mensajes', '/dashboard/mensajes'],
-  ['leads', 'Leads', '/dashboard/leads'],
-  ['derivaciones', 'Derivaciones', '/dashboard/derivaciones'],
-  ['ajustes', 'Ajustes', '/dashboard/ajustes'],
+  ['inicio', 'Inicio', B + '/dashboard'],
+  ['agenda', 'Agenda', B + '/dashboard/agenda'],
+  ['mensajes', 'Mensajes', B + '/dashboard/mensajes'],
+  ['leads', 'Leads', B + '/dashboard/leads'],
+  ['derivaciones', 'Derivaciones', B + '/dashboard/derivaciones'],
+  ['ajustes', 'Ajustes', B + '/dashboard/ajustes'],
 ];
 
 function renderPage({ active, agentOnline, content, wide }) {

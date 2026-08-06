@@ -10,6 +10,7 @@ const { renderPage, escapeHtml } = require('../utils/dashboardLayout');
 const { renderWeekCalendar, mondayOf, addDays } = require('../utils/weekCalendarView');
 
 const router = express.Router();
+const B = config.basePath; // e.g. '/simaxface' or ''
 router.use('/dashboard', dashboardAuth);
 
 router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
@@ -107,8 +108,8 @@ router.get('/dashboard', async (req, res) => {
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
 <div class="cards">${stats}</div>
 <div class="cols">
-  <div class="panel"><h3>Próximos turnos <a href="/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
-  <div class="panel"><h3>Conversaciones recientes <a href="/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
+  <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
+  <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
 </div>`;
   res.send(renderPage({ active: 'inicio', agentOnline: online, content }));
 });
@@ -127,9 +128,9 @@ router.get('/dashboard/agenda', async (req, res) => {
 <h1>Agenda</h1>
 <p class="sub">Turnos confirmados y pendientes de la semana.</p>
 <div class="toolbar">
-  <a class="btn" href="/dashboard/agenda?week=${addDays(monday, -7)}">← Anterior</a>
-  <div><strong>Semana del ${monday.split('-').reverse().join('/')}</strong> &nbsp; <a class="btn" href="/dashboard/agenda">Hoy</a></div>
-  <a class="btn" href="/dashboard/agenda?week=${addDays(monday, 7)}">Siguiente →</a>
+  <a class="btn" href="${B}/dashboard/agenda?week=${addDays(monday, -7)}">← Anterior</a>
+  <div><strong>Semana del ${monday.split('-').reverse().join('/')}</strong> &nbsp; <a class="btn" href="${B}/dashboard/agenda">Hoy</a></div>
+  <a class="btn" href="${B}/dashboard/agenda?week=${addDays(monday, 7)}">Siguiente →</a>
 </div>
 ${cal}
 <script>
@@ -155,7 +156,7 @@ router.get('/dashboard/mensajes', async (req, res) => {
             const initials = c.nombre ? c.nombre.trim().charAt(0).toUpperCase() : c.phone.slice(-2);
             const aiOff = c.ai_enabled === false ? ' ai-off' : '';
             return `
-    <a class="conv-item${sel === c.phone ? ' sel' : ''}${aiOff}" href="/dashboard/mensajes?phone=${encodeURIComponent(c.phone)}">
+    <a class="conv-item${sel === c.phone ? ' sel' : ''}${aiOff}" href="${B}/dashboard/mensajes?phone=${encodeURIComponent(c.phone)}">
       <div class="avatar">${escapeHtml(initials)}</div>
       <div class="conv-meta">
         <div class="conv-phone">${escapeHtml(displayName)}${c.nombre ? '<span class="conv-num">' + escapeHtml(c.phone) + '</span>' : ''}</div>
@@ -218,7 +219,7 @@ router.get('/dashboard/mensajes', async (req, res) => {
 const m=document.querySelector('.chat-msgs');if(m)m.scrollTop=m.scrollHeight;
 async function toggleAi(phone,enabled){
   try{
-    await fetch('/dashboard/api/toggle-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,enabled})});
+    await fetch('${B}/dashboard/api/toggle-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,enabled})});
     location.reload();
   }catch(e){alert('Error al cambiar modo')}
 }
@@ -238,7 +239,7 @@ router.get('/dashboard/derivaciones', async (req, res) => {
         <div class="hdate">${fmtTime(h.created_at)}</div>
         <div class="hreason">${escapeHtml(h.reason)}</div>
       </div>
-      <div><a class="btn" href="/dashboard/mensajes?phone=${encodeURIComponent(h.phone)}">Ver conversación</a></div>
+      <div><a class="btn" href="${B}/dashboard/mensajes?phone=${encodeURIComponent(h.phone)}">Ver conversación</a></div>
     </div>`
         )
         .join('')
@@ -269,7 +270,7 @@ router.get('/dashboard/leads', async (req, res) => {
   const cards = Object.entries(ESTADO_INFO)
     .map(([est, info]) => {
       const activo = filtro === est && vista === 'lista' ? ' lead-card-active' : '';
-      return '<a class="lead-card lc-' + est + activo + '" href="/dashboard/leads?estado=' + est + '">'
+      return '<a class="lead-card lc-' + est + activo + '" href="' + B + '/dashboard/leads?estado=' + est + '">'
         + '<span class="lead-card-ico">' + info[0] + '</span>'
         + '<span class="lead-card-num">' + (counts[est] || 0) + '</span>'
         + '<span class="lead-card-lbl">' + info[1] + '</span></a>';
@@ -291,7 +292,7 @@ router.get('/dashboard/leads', async (req, res) => {
           + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
           + '<div class="lead-tags"><span class="pill pill-' + escapeHtml(l.estado) + '">' + (ESTADO_INFO[l.estado] ? ESTADO_INFO[l.estado][1] : l.estado) + '</span>' + chipsFor(l.interes) + '</div>'
           + '<div class="lead-when">' + fmtTime(l.ultimo_contacto) + '</div>'
-          + '<a class="btn lead-btn" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
+          + '<a class="btn lead-btn" href="' + B + '/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
           + '</div>';
       }).join('')
     : '<p class="empty" style="padding:32px;text-align:center">No hay leads en esta categoria.</p>';
@@ -301,7 +302,7 @@ router.get('/dashboard/leads', async (req, res) => {
     const delEstado = leads.filter((l) => l.estado === est);
     const tarjetas = delEstado.length
       ? delEstado.map((l) =>
-          '<a class="kan-card" href="/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">'
+          '<a class="kan-card" href="' + B + '/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">'
           + '<div class="kan-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
           + '<div class="kan-phone">' + escapeHtml(l.phone) + '</div>'
           + (chipsFor(l.interes) ? '<div class="kan-chips">' + chipsFor(l.interes) + '</div>' : '')
@@ -314,13 +315,13 @@ router.get('/dashboard/leads', async (req, res) => {
   }).join('');
 
   const toggle = '<div class="lead-toggle">'
-    + '<a class="' + (vista === 'lista' ? 'tg-on' : '') + '" href="/dashboard/leads">Lista</a>'
-    + '<a class="' + (vista === 'tablero' ? 'tg-on' : '') + '" href="/dashboard/leads?vista=tablero">Tablero</a>'
+    + '<a class="' + (vista === 'lista' ? 'tg-on' : '') + '" href="' + B + '/dashboard/leads">Lista</a>'
+    + '<a class="' + (vista === 'tablero' ? 'tg-on' : '') + '" href="' + B + '/dashboard/leads?vista=tablero">Tablero</a>'
     + '</div>';
 
   const cuerpo = vista === 'tablero'
     ? '<div class="kanban">' + columnas + '</div>'
-    : (filtro ? '<div class="toolbar"><a class="btn" href="/dashboard/leads">Ver todos</a></div>' : '') + rows;
+    : (filtro ? '<div class="toolbar"><a class="btn" href="' + B + '/dashboard/leads">Ver todos</a></div>' : '') + rows;
 
   const filtroLabel = vista === 'lista' && filtro && ESTADO_INFO[filtro] ? ' Mostrando: ' + ESTADO_INFO[filtro][1] : ' Clientes clasificados automaticamente.';
 
@@ -427,14 +428,14 @@ async function blockContact(){
   const phone=document.getElementById('blockPhone').value.trim();
   if(!phone)return;
   try{
-    await fetch('/dashboard/api/block-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+    await fetch('${B}/dashboard/api/block-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
     location.reload();
   }catch(e){alert('Error al bloquear')}
 }
 async function unblock(phone){
   if(!confirm('Desbloquear '+phone+'?'))return;
   try{
-    await fetch('/dashboard/api/unblock-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+    await fetch('${B}/dashboard/api/unblock-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
     location.reload();
   }catch(e){alert('Error al desbloquear')}
 }
