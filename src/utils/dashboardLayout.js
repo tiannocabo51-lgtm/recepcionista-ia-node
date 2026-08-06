@@ -192,9 +192,12 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   .cal2-appt-svc { font-size:.66rem; color:#c7d2fe; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cal2-empty { color:var(--mut); font-style:italic; padding:24px; text-align:center; }
   @media (max-width:760px) { .cal2-body,.cal2-head { min-width:640px; } .cal2 { overflow-x:auto; } }
+  .offline-banner{background:linear-gradient(90deg,#dc2626,#b91c1c);color:#fff;padding:10px 20px;text-align:center;font-size:.84rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px}
+  .offline-banner a{color:#fecaca;text-decoration:underline;font-weight:400}
 </style>
 </head>
 <body>
+${agentOnline === false ? `<div class="offline-banner">⚠️ WhatsApp desconectado — el agente no puede responder mensajes. <a href="${B}/dashboard/ajustes">Verificar conexión →</a></div>` : ''}
 <header>
   <div>
     <div class="brand">${escapeHtml(business.nombre)}</div>

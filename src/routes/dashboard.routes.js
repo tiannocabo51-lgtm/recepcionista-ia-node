@@ -267,10 +267,20 @@ router.get('/dashboard', async (req, res) => {
 .cd-label{font-size:.78rem;color:var(--mut);font-weight:600}
 .cd-time{font-size:1.6rem;font-weight:700;color:var(--acc2);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .cd-info{font-size:.82rem;color:var(--txt);margin-left:auto}
-@media(max-width:640px){.countdown-box{flex-direction:column;align-items:flex-start;gap:6px}.cd-info{margin-left:0}}
+.quick-actions{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.qa{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;background:var(--card);border:1px solid var(--line);color:var(--txt);text-decoration:none;font-size:.82rem;font-weight:500;transition:all .16s}
+.qa:hover{border-color:var(--acc2);transform:translateY(-1px)}
+.qa-warn{border-color:var(--warn);background:rgba(251,191,36,.08);color:var(--warn);font-weight:600}
+@media(max-width:640px){.countdown-box{flex-direction:column;align-items:flex-start;gap:6px}.cd-info{margin-left:0}.quick-actions{gap:8px}.qa{font-size:.78rem;padding:7px 12px}}
 </style>
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
 ${countdownHtml}
+<div class="quick-actions">
+  <a class="qa" href="${B}/dashboard/agenda">📅 Agendar turno</a>
+  ${derivs24h > 0 ? `<a class="qa qa-warn" href="${B}/dashboard/derivaciones">🔔 ${derivs24h} derivación${derivs24h>1?'es':''} pendiente${derivs24h>1?'s':''}</a>` : ''}
+  <a class="qa" href="${B}/dashboard/api/appointments/export?from=${t}&to=${t}">📥 Exportar hoy</a>
+  <a class="qa" href="${B}/dashboard/leads">👥 Ver leads</a>
+</div>
 <div class="st-cards">${stats}</div>
 <div class="cols">
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
@@ -497,11 +507,20 @@ router.delete('/dashboard/api/block/:id', async (req, res) => {
 
 router.get('/dashboard/mensajes', async (req, res) => {
   const sel = typeof req.query.phone === 'string' ? req.query.phone : null;
-  const [online, convs, chat] = await Promise.all([
+  const pool = require('../db/pool');
+  const [online, convs, chat, clientHistory] = await Promise.all([
     agentOnline(),
     conversationsRepo.listConversations(),
     sel ? conversationsRepo.findByPhone(sel) : Promise.resolve(null),
+    sel ? pool.query(`SELECT appointment_date, appointment_time, service, status, price, name FROM appointments WHERE phone=$1 ORDER BY appointment_date DESC, appointment_time DESC LIMIT 10`, [sel]) : Promise.resolve(null),
   ]);
+  const clientStats = sel && clientHistory ? (() => {
+    const rows = clientHistory.rows;
+    const total = rows.reduce((s,r) => s + (parseFloat(r.price)||0), 0);
+    const count = rows.length;
+    const last = rows[0];
+    return { total, count, last, rows };
+  })() : null;
   const items = convs.length
     ? convs
         .map(
@@ -555,6 +574,20 @@ router.get('/dashboard/mensajes', async (req, res) => {
       <input type="text" id="replyMsg" placeholder="Escribí un mensaje…" autocomplete="off">
       <button id="sendBtn" title="Enviar">➤</button>
     </div>
+    ${clientStats ? `<div class="client-profile">
+      <div class="cp-head" onclick="document.getElementById('cpBody').classList.toggle('open')">👤 Ficha del cliente <span style="margin-left:auto;font-size:.7rem">▼</span></div>
+      <div id="cpBody" class="cp-body open">
+        <div class="cp-stats">
+          <div class="cp-stat"><div class="cp-v">${clientStats.count}</div><div class="cp-l">Turnos</div></div>
+          <div class="cp-stat"><div class="cp-v">$${Math.round(clientStats.total).toLocaleString('es-AR')}</div><div class="cp-l">Total gastado</div></div>
+          <div class="cp-stat"><div class="cp-v">${clientStats.last ? fmtDay(clientStats.last.appointment_date) : '—'}</div><div class="cp-l">Última visita</div></div>
+        </div>
+        ${clientStats.rows.length ? '<div class="cp-hist">' + clientStats.rows.slice(0,5).map(r => {
+          const st = {confirmado:'🟢',finalizado:'✅',cancelado:'❌',noasistio:'🟣',pendiente:'🟡',curso:'🔵'};
+          return '<div class="cp-row">' + (st[r.status]||'⚪') + ' <span class="cp-svc">' + escapeHtml(r.service) + '</span><span class="cp-dt">' + fmtDay(r.appointment_date) + '</span><span class="cp-pr">$' + (parseFloat(r.price)||0) + '</span></div>';
+        }).join('') + '</div>' : ''}
+      </div>
+    </div>` : ''}
     <div class="notes-panel">
       <div class="notes-head" onclick="document.getElementById('notesBody').classList.toggle('open')">📝 Notas del cliente <span class="notes-cnt" id="notesCnt">0</span> <span style="margin-left:auto;font-size:.7rem">▼</span></div>
       <div id="notesBody" class="notes-body">
@@ -584,6 +617,20 @@ router.get('/dashboard/mensajes', async (req, res) => {
 .chat-input button:hover{background:var(--acc2);transform:scale(1.05)}
 .chat-input button:disabled{opacity:.4;cursor:default;transform:none}
 .bubble-human{align-self:flex-end;background:var(--warn);color:#1a1d26;border-bottom-right-radius:4px}
+.client-profile{border-top:1px solid var(--line);background:var(--card)}
+.cp-head{display:flex;align-items:center;gap:6px;padding:8px 14px;font-size:.78rem;font-weight:600;color:var(--mut);cursor:pointer;user-select:none}
+.cp-head:hover{color:var(--txt)}
+.cp-body{display:none;padding:8px 14px 10px}
+.cp-body.open{display:block}
+.cp-stats{display:flex;gap:12px;margin-bottom:8px}
+.cp-stat{flex:1;text-align:center;padding:6px;background:var(--card2);border-radius:8px}
+.cp-v{font-size:1rem;font-weight:700;color:var(--acc2)}
+.cp-l{font-size:.65rem;color:var(--mut);margin-top:2px}
+.cp-hist{border-top:1px solid var(--line);padding-top:6px}
+.cp-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:.76rem}
+.cp-svc{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cp-dt{color:var(--mut);font-size:.7rem}
+.cp-pr{font-weight:600;color:var(--ok);width:50px;text-align:right}
 .notes-panel{border-top:1px solid var(--line);background:var(--card)}
 .notes-head{display:flex;align-items:center;gap:6px;padding:8px 14px;font-size:.78rem;font-weight:600;color:var(--mut);cursor:pointer;user-select:none}
 .notes-head:hover{color:var(--txt)}
@@ -991,6 +1038,7 @@ router.get('/dashboard/estadisticas', async (req, res) => {
   <div class="stat-card sc-purple"><div class="sc-v">${mc.clientes_unicos}</div><div class="sc-l">Clientes únicos</div></div>
   <div class="stat-card"><div class="sc-v">${mc.total}</div><div class="sc-l">Mensajes del mes</div></div>
   <div class="stat-card sc-red"><div class="sc-v">${tasaCancel}%</div><div class="sc-l">Tasa cancelación</div></div>
+  <div class="stat-card sc-purple"><div class="sc-v">${tasaNoShow}%</div><div class="sc-l">Tasa no-show</div></div>
 </div>
 <div class="stat-panels">
   <div class="stat-panel"><h3>🏆 Servicios más pedidos</h3>${svcBars}</div>
