@@ -77,15 +77,18 @@ router.get('/dashboard', async (req, res) => {
     appointmentsRepo.findUpcoming(5),
     conversationsRepo.listConversations(),
   ]);
+  const confirmados = turnosHoy.filter(a => a.status === 'confirmado').length;
+  const cancelados = turnosHoy.filter(a => a.status === 'cancelado').length;
+  const pendientes = turnosHoy.filter(a => a.status === 'pendiente').length;
   const stats = [
-    ['chip1', '📅', 'Turnos hoy', turnosHoy.length],
-    ['chip2', '💬', 'Mensajes hoy', msgs],
-    ['chip3', '✨', 'Clientes nuevos hoy', nuevos],
-    ['chip4', '🙋', 'Derivaciones hoy', derivs],
+    ['chip1', '📅', 'Turnos hoy', turnosHoy.length, `${confirmados} confirmados · ${pendientes} pendientes`, `${B}/dashboard/agenda`],
+    ['chip2', '✅', 'Confirmados', confirmados, 'listos para atender', `${B}/dashboard/agenda`],
+    ['chip3', '✨', 'Clientes nuevos', nuevos, 'primera vez hoy', `${B}/dashboard/leads?estado=nuevo`],
+    ['chip4', '🙋', 'Derivaciones', derivs, 'pasadas a humano', `${B}/dashboard/derivaciones`],
   ]
     .map(
-      ([cls, ico, lbl, num]) =>
-        `<div class="card"><div class="chip ${cls}">${ico}</div><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`
+      ([cls, ico, lbl, num, sub, href]) =>
+        `<a class="card" href="${href}" style="text-decoration:none;color:inherit"><div class="chip ${cls}">${ico}</div><div class="num">${num}</div><div class="lbl">${lbl}</div><div class="lbl" style="margin-top:2px;font-size:.7rem">${sub}</div></a>`
     )
     .join('');
   const turnosList = proximos.length

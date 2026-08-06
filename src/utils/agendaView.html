@@ -40,7 +40,7 @@
   .wrap{display:grid;grid-template-columns:262px 1fr;gap:0;height:calc(100vh - 170px)}
   .side{border-right:1px solid var(--line);overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px;background:rgba(18,24,40,.35)}
   .main{overflow:hidden;display:flex;flex-direction:column}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;padding:14px 18px 0}
+  .stats{display:none}
   .st{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;transition:.18s;position:relative;overflow:hidden}
   .st:hover{border-color:var(--acc2);transform:translateY(-2px)}
   .st .l{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
@@ -91,7 +91,7 @@
   .ch.td .dw{color:var(--acc2)}
   .ch .pnm{font-size:12.5px;font-weight:650;display:flex;align-items:center;justify-content:center;gap:6px}
   .ch .pnm i{width:8px;height:8px;border-radius:3px;display:inline-block}
-  .gridscroll{flex:1;overflow-y:auto;position:relative}
+  .gridscroll{flex:1;overflow-y:auto;position:relative;padding-top:8px}
   .grid{display:grid;position:relative}
   .tcol{border-right:1px solid var(--line);background:var(--card2)}
   .tlab{height:var(--hour);font-size:10.5px;color:var(--mut);text-align:right;padding:2px 7px 0 0;font-variant-numeric:tabular-nums;position:relative;top:-6px}
