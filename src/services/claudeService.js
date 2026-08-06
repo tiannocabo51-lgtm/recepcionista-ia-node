@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const { buildSystemPrompt } = require('../utils/systemPrompt');
 const conversationsRepo = require('../db/conversations.repository');
 const appointmentService = require('./appointmentService');
+const appointmentsRepo = require('../db/appointments.repository');
 const handoffsRepo = require('../db/handoffs.repository');
 const leadsRepo = require('../db/leads.repository');
 const leadClassifier = require('./leadClassifier');
@@ -122,8 +123,8 @@ async function executeTool(name, input, phone) {
         return JSON.stringify({ ok: false, error: 'No se encontró un turno próximo para este número' });
       }
       const appt = upcoming[0]; // most recent upcoming
-      const poolDb = require('../db/pool');
-      await poolDb.query('UPDATE appointments SET status=$1 WHERE id=$2', [input.status, appt.id]);
+      const pool = require('../db/pool');
+      await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [input.status, appt.id]);
       const statusLabel = input.status === 'confirmado' ? '✅ Confirmado' : '❌ Cancelado';
       notifyOwner(
         `${statusLabel}\nCliente: ${appt.name} (${phone})\nServicio: ${appt.service}\nFecha: ${appt.appointment_date} ${appt.appointment_time}` +

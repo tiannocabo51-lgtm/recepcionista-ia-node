@@ -2,10 +2,11 @@ const axios = require('axios');
 const config = require('../utils/config');
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsappService');
+const business = require('../utils/businessConfig');
 
 // ── Config ──────────────────────────────────────────────────────────────
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;  // cada 5 minutos
-const ALERT_PHONE = '5492236747031';       // tu número para alertas
+const ALERT_PHONE = config.alertPhone || business.whatsappHumano; // número para alertas (env ALERT_PHONE o whatsappHumano)
 const ALERT_COOLDOWN_MS = 30 * 60 * 1000;  // no repetir alerta por 30 min
 
 let lastAlertAt = 0;

@@ -7,7 +7,7 @@ const leadsRepo = require('../db/leads.repository');
 const business = require('../utils/businessConfig');
 const config = require('../utils/config');
 const { renderPage, escapeHtml } = require('../utils/dashboardLayout');
-const { renderWeekCalendar, mondayOf, addDays } = require('../utils/weekCalendarView');
+const { mondayOf, addDays } = require('../utils/weekCalendarView');
 const agendaView = require('../utils/agendaView');
 const blocksRepo = require('../db/blocks.repository');
 
@@ -44,7 +44,7 @@ function fmtDay(d) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 }
 
 const HOME_CSS = `<style>
@@ -358,7 +358,7 @@ router.get('/dashboard/mensajes', async (req, res) => {
             ${selConv?.nombre ? '<span class="chat-head-phone">' + escapeHtml(sel) + '</span>' : ''}
           </div>
           <label class="ai-toggle" title="${selAi ? 'IA activa — click para pasar a humano' : 'Modo humano — click para activar IA'}">
-            <input type="checkbox" ${selAi ? 'checked' : ''} onchange="toggleAi('${sel}',this.checked)">
+            <input type="checkbox" ${selAi ? 'checked' : ''} onchange="toggleAi('${escapeHtml(sel).replace(/'/g, "\\'")}',this.checked)">
             <span class="ai-slider"></span>
             <span class="ai-label">${selAi ? '🤖 IA' : '👤 Humano'}</span>
           </label>

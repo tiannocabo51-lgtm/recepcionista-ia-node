@@ -35,13 +35,13 @@ async function getStaleLeads() {
        AND l.estado IN ('nuevo', 'consultando')
        AND l.followup_count < $1
        AND (
-         (l.followup_count = 0 AND l.ultimo_contacto < now() - interval '${FIRST_FOLLOWUP_HOURS} hours')
+         (l.followup_count = 0 AND l.ultimo_contacto < now() - $2 * interval '1 hour')
          OR
-         (l.followup_count = 1 AND l.last_followup_at < now() - interval '${SECOND_FOLLOWUP_HOURS} hours')
+         (l.followup_count = 1 AND l.last_followup_at < now() - $3 * interval '1 hour')
        )
      ORDER BY l.ultimo_contacto ASC
      LIMIT 10`,
-    [MAX_FOLLOWUPS]
+    [MAX_FOLLOWUPS, FIRST_FOLLOWUP_HOURS, SECOND_FOLLOWUP_HOURS]
   );
   return result.rows;
 }

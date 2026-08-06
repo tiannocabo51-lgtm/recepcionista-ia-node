@@ -38,9 +38,18 @@ const server = app.listen(config.port, () => {
   blockedContacts.loadCache();
 });
 
+const pool = require('./db/pool');
+
 function shutdown(signal) {
   logger.info(`Recibida señal ${signal}, cerrando servidor...`);
-  server.close(() => process.exit(0));
+  server.close(() => {
+    pool.end().then(() => {
+      logger.info('Pool de base de datos cerrado');
+      process.exit(0);
+    }).catch(() => process.exit(0));
+  });
+  // Force exit after 10s if graceful shutdown hangs
+  setTimeout(() => process.exit(1), 10000).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));

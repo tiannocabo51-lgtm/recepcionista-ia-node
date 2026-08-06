@@ -2,6 +2,9 @@ const pool = require('./pool');
 const logger = require('../utils/logger');
 
 const MIGRATIONS = [
+  // Set timezone for CURRENT_DATE / CURRENT_TIMESTAMP consistency
+  `ALTER DATABASE CURRENT_DATABASE() SET timezone TO 'America/Argentina/Buenos_Aires'`,
+  `SET timezone TO 'America/Argentina/Buenos_Aires'`,
   // Add interactive agenda columns to appointments
   `ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration    INT DEFAULT 30`,
   `ALTER TABLE appointments ADD COLUMN IF NOT EXISTS price       NUMERIC(12,2) DEFAULT 0`,
@@ -18,6 +21,10 @@ const MIGRATIONS = [
      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS idx_blocks_date ON blocks(block_date)`,
+  // Leads follow-up tracking columns
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS followup_count INT DEFAULT 0`,
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ`,
+  `ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN DEFAULT true`,
 ];
 
 async function runMigrations() {
