@@ -3,7 +3,6 @@ const logger = require('../utils/logger');
 
 const MIGRATIONS = [
   // Set timezone for CURRENT_DATE / CURRENT_TIMESTAMP consistency
-  `ALTER DATABASE CURRENT_DATABASE() SET timezone TO 'America/Argentina/Buenos_Aires'`,
   `SET timezone TO 'America/Argentina/Buenos_Aires'`,
   // Add interactive agenda columns to appointments
   `ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration    INT DEFAULT 30`,

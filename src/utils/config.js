@@ -31,6 +31,7 @@ const config = {
   receptionistPhone: process.env.RECEPTIONIST_PHONE || null,
   basePath: (process.env.BASE_PATH || '').replace(/\/+$/, ''),
   alertPhone: process.env.ALERT_PHONE || null,
+  webhookExternalUrl: process.env.WEBHOOK_EXTERNAL_URL || null,
 };
 
 module.exports = config;
