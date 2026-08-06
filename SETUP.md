@@ -105,3 +105,6 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
   - Solo manda en horario comercial (9 a 20hs, nunca domingos)
   - Notifica al dueño del negocio cada vez que manda un seguimiento
   - Si el lead responde, se resetea el contador automáticamente
+- **Monitor de conexión**: chequea cada 5 minutos si WhatsApp sigue conectado. Si se desconecta, manda un mensaje de alerta al número configurado en `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas para no spamear. Es silencioso mientras todo ande bien.
+- **Prompt conversacional**: el system prompt está diseñado para que la IA suene como una persona real, no como un bot. Matchea el tono del cliente, mensajes cortos (2-3 líneas), sin frases robóticas. Se configura automáticamente con los datos de `businessConfig.js`.
+- **Nginx reverse proxy**: cada cliente se accede por path en el puerto 80: `http://IP-VPS/nombre-cliente/dashboard`. Config en `/etc/nginx/sites-available/wayudu`. Para agregar un cliente nuevo, agregar un bloque `location /nombre-cliente/` apuntando al puerto del cliente.
