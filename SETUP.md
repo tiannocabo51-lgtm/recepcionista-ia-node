@@ -39,6 +39,7 @@ Editar `.env` y completar:
 | `DASHBOARD_PASSWORD` | Contraseña del dashboard |
 | `RECEPTIONIST_PHONE` | WhatsApp del dueño/recepcionista (con código país, ej: 5492235551234) |
 | `HOST_PORT` | Puerto externo (si hay varios agentes en el mismo VPS, usar puertos distintos) |
+| `BASE_PATH` | Path del reverse proxy (ej: `/nombre-cliente`). Dejar vacío si no se usa Nginx. |
 
 ### 3. Configurar datos del negocio
 
@@ -107,4 +108,7 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
   - Si el lead responde, se resetea el contador automáticamente
 - **Monitor de conexión**: chequea cada 5 minutos si WhatsApp sigue conectado. Si se desconecta, manda un mensaje de alerta al número configurado en `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas para no spamear. Es silencioso mientras todo ande bien.
 - **Prompt conversacional**: el system prompt está diseñado para que la IA suene como una persona real, no como un bot. Matchea el tono del cliente, mensajes cortos (2-3 líneas), sin frases robóticas. Se configura automáticamente con los datos de `businessConfig.js`.
-- **Nginx reverse proxy**: cada cliente se accede por path en el puerto 80: `http://IP-VPS/nombre-cliente/dashboard`. Config en `/etc/nginx/sites-available/wayudu`. Para agregar un cliente nuevo, agregar un bloque `location /nombre-cliente/` apuntando al puerto del cliente.
+- **Nginx reverse proxy**: cada cliente se accede por path en el puerto 80: `http://IP-VPS/nombre-cliente/dashboard`. Config en `/etc/nginx/sites-available/wayudu`. Para agregar un cliente nuevo, agregar un bloque `location /nombre-cliente/` apuntando al puerto del cliente. Recordar setear `BASE_PATH=/nombre-cliente` en el `.env` del cliente.
+- **Contactos bloqueados**: para clientes que usan WhatsApp personal/laboral, se pueden bloquear contactos desde Ajustes en el dashboard. La IA no les responde. También se pueden cargar contactos iniciales en `businessConfig.js` > `contactosBloqueados`.
+- **Agenda interactiva**: el dashboard tiene una agenda completa con drag-drop de turnos, bloqueo de horarios, colores por estado, vista semana/día/mes/timeline. Las migraciones de la DB se ejecutan automáticamente al arrancar la app (no hace falta tocar la DB).
+- **Migraciones automáticas**: al hacer `docker compose up`, la app detecta columnas y tablas faltantes y las agrega sola. No hace falta ejecutar SQL manualmente.
