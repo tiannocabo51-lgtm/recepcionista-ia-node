@@ -374,7 +374,7 @@
 <script>
 (function(){
 'use strict';
-const HOUR_PX=58,SNAP=15,API='/dashboard/api';
+const HOUR_PX=58,SNAP=15,API=(window.__BASE_PATH__||'')+'/dashboard/api';
 let DAY_START=8,DAY_END=20;
 const ST={confirmado:{l:'Confirmado',c:'#34d399',i:'●'},pendiente:{l:'Pendiente',c:'#fbbf24',i:'◐'},curso:{l:'En curso',c:'#38bdf8',i:'▶'},
   finalizado:{l:'Finalizado',c:'#8b96ad',i:'✓'},cancelado:{l:'Cancelado',c:'#f87171',i:'✕'},noasistio:{l:'No asistió',c:'#c084fc',i:'⊘'}};

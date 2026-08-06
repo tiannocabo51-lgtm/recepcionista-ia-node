@@ -8,6 +8,8 @@ const business = require('../utils/businessConfig');
 const config = require('../utils/config');
 const { renderPage, escapeHtml } = require('../utils/dashboardLayout');
 const { renderWeekCalendar, mondayOf, addDays } = require('../utils/weekCalendarView');
+const agendaView = require('../utils/agendaView');
+const blocksRepo = require('../db/blocks.repository');
 
 const router = express.Router();
 const B = config.basePath; // e.g. '/simaxface' or ''
@@ -114,31 +116,141 @@ router.get('/dashboard', async (req, res) => {
   res.send(renderPage({ active: 'inicio', agentOnline: online, content }));
 });
 
-router.get('/dashboard/agenda', async (req, res) => {
-  const ref = /^\d{4}-\d{2}-\d{2}$/.test(req.query.week) ? req.query.week : today();
-  const monday = mondayOf(ref);
-  const [online, appts] = await Promise.all([
-    agentOnline(),
-    appointmentsRepo.findByDateRange(monday, addDays(monday, 6)),
+// ── Agenda interactiva (agendaView.html) ──────────────────────────────
+router.get('/dashboard/agenda', (req, res) => {
+  // Inject BASE_PATH so the JS inside agendaView.html can build API URLs
+  const html = agendaView().replace(
+    '<script>',
+    `<script>window.__BASE_PATH__=${JSON.stringify(B)};`,
+    // only replace the first occurrence
+  );
+  res.send(html);
+});
+
+// ── Agenda API endpoints ──────────────────────────────────────────────
+
+// GET /dashboard/api/agenda?from=&to=  → full data for the interactive view
+router.get('/dashboard/api/agenda', async (req, res) => {
+  const from = req.query.from || today();
+  const to = req.query.to || today();
+  const [appts, blocks] = await Promise.all([
+    appointmentsRepo.findRange(from, to),
+    blocksRepo.list(from, to),
   ]);
-  const cal = renderWeekCalendar({ referenceDate: monday, appointments: appts, escapeHtml });
-  const content = `<style>
-  .cal-head.cal-today { background:rgba(99,102,241,.3); color:#c7d2fe; }
-</style>
-<h1>Agenda</h1>
-<p class="sub">Turnos confirmados y pendientes de la semana.</p>
-<div class="toolbar">
-  <a class="btn" href="${B}/dashboard/agenda?week=${addDays(monday, -7)}">← Anterior</a>
-  <div><strong>Semana del ${monday.split('-').reverse().join('/')}</strong> &nbsp; <a class="btn" href="${B}/dashboard/agenda">Hoy</a></div>
-  <a class="btn" href="${B}/dashboard/agenda?week=${addDays(monday, 7)}">Siguiente →</a>
-</div>
-${cal}
-<script>
-  const hoy = new Date();
-  const tag = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0');
-  document.querySelectorAll('.cal-head').forEach((e) => { if (e.textContent.includes(tag)) e.classList.add('cal-today'); });
-</script>`;
-  res.send(renderPage({ active: 'agenda', agentOnline: online, content, wide: true }));
+
+  // Derive hours from businessConfig
+  const allTimes = business.horarios
+    .map(h => h.horario.match(/(\d{2}):00/g))
+    .filter(Boolean).flat().map(t => parseInt(t));
+  const hStart = allTimes.length ? Math.min(...allTimes) : 8;
+  const hEnd = allTimes.length ? Math.max(...allTimes) : 20;
+
+  // Build services list from businessConfig
+  const srvSet = [...new Set(business.servicios.map(s => s.nombre))];
+  const services = srvSet.map(n => ({ n, c: '#818cf8' }));
+
+  // Map DB rows to the format agendaView.html expects
+  const appointments = appts.map(a => ({
+    id: a.id,
+    name: a.name,
+    phone: a.phone,
+    srv: a.service,
+    date: a.appointment_date,
+    from: a.from_min != null ? a.from_min : (parseInt(a.appointment_time) * 60 + parseInt((a.appointment_time || '0:0').split(':')[1] || 0)),
+    dur: a.duration || 30,
+    st: a.status || 'pendiente',
+    color: a.color || null,
+    pro: a.professional || 1,
+    price: a.price || 0,
+    deposit: a.deposit || 0,
+    notes: a.notes || '',
+  }));
+
+  const blocksList = blocks.map(b => ({
+    id: b.id,
+    date: b.block_date,
+    from: b.from_min,
+    dur: b.duration,
+    reason: b.reason || '',
+  }));
+
+  res.json({
+    hours: { start: hStart, end: hEnd },
+    professionals: [{ id: 1, name: business.nombreRecepcionista || 'Profesional', color: '#818cf8' }],
+    services,
+    appointments,
+    blocks: blocksList,
+  });
+});
+
+// POST /dashboard/api/appointment — create or update
+router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
+  try {
+    const b = req.body;
+    // If only id+status → quick status change
+    if (b.id && b.status && !b.name) {
+      const pool = require('../db/pool');
+      await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [b.status, b.id]);
+      return res.json({ ok: true });
+    }
+    const timeStr = b.time || (b.from != null ? `${String(Math.floor(b.from / 60)).padStart(2, '0')}:${String(b.from % 60).padStart(2, '0')}` : '08:00');
+    const saved = await appointmentsRepo.saveFull({
+      id: b.id || null,
+      name: b.name || '',
+      phone: b.phone || '',
+      service: b.srv || b.service || '',
+      date: b.date,
+      time: timeStr,
+      from_min: b.from,
+      duration: b.dur || b.duration || 30,
+      status: b.status || 'pendiente',
+      color: b.color || null,
+      price: b.price || 0,
+      deposit: b.deposit || 0,
+      professional: b.pro || b.professional || 1,
+      notes: b.notes || '',
+    });
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /dashboard/api/appointment/move — drag-drop
+router.post('/dashboard/api/appointment/move', express.json(), async (req, res) => {
+  try {
+    const { id, date, from, duration } = req.body;
+    const timeStr = `${String(Math.floor(from / 60)).padStart(2, '0')}:${String(from % 60).padStart(2, '0')}`;
+    await appointmentsRepo.move(id, date, timeStr, from, duration);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /dashboard/api/block — create/update time block
+router.post('/dashboard/api/block', express.json(), async (req, res) => {
+  try {
+    const { id, date, from, duration, reason } = req.body;
+    if (id) {
+      const updated = await blocksRepo.update(id, { from, duration, reason });
+      return res.json(updated);
+    }
+    const created = await blocksRepo.create({ date, from, duration, reason });
+    res.json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /dashboard/api/block/:id
+router.delete('/dashboard/api/block/:id', async (req, res) => {
+  try {
+    await blocksRepo.remove(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/dashboard/mensajes', async (req, res) => {

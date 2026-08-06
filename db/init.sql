@@ -48,3 +48,23 @@ CREATE TABLE IF NOT EXISTS leads (
 );
 
 CREATE INDEX IF NOT EXISTS idx_leads_estado ON leads(estado);
+
+-- Columnas extra para la agenda interactiva (safe to re-run)
+DO $$ BEGIN
+  ALTER TABLE appointments ADD COLUMN IF NOT EXISTS duration    INT DEFAULT 30;
+  ALTER TABLE appointments ADD COLUMN IF NOT EXISTS price       NUMERIC(12,2) DEFAULT 0;
+  ALTER TABLE appointments ADD COLUMN IF NOT EXISTS deposit     NUMERIC(12,2) DEFAULT 0;
+  ALTER TABLE appointments ADD COLUMN IF NOT EXISTS color       VARCHAR(20);
+  ALTER TABLE appointments ADD COLUMN IF NOT EXISTS professional INT DEFAULT 1;
+END $$;
+
+CREATE TABLE IF NOT EXISTS blocks (
+  id          SERIAL PRIMARY KEY,
+  block_date  DATE NOT NULL,
+  from_min    INT NOT NULL,
+  duration    INT NOT NULL DEFAULT 30,
+  reason      TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocks_date ON blocks(block_date);

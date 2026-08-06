@@ -26,11 +26,13 @@ app.use((err, req, res, next) => {
 const followUpService = require('./services/followUpService');
 const connectionMonitor = require('./services/connectionMonitor');
 const blockedContacts = require('./db/blockedContacts.repository');
+const { runMigrations } = require('./db/migrate');
 
 const server = app.listen(config.port, () => {
   logger.info(`Servidor escuchando en el puerto ${config.port} (${config.nodeEnv})`);
   logger.info(`Webhook: POST http://localhost:${config.port}/webhook`);
   logger.info(`Health check: GET http://localhost:${config.port}/health`);
+  runMigrations();
   followUpService.start();
   connectionMonitor.start();
   blockedContacts.loadCache();
