@@ -14,8 +14,10 @@ function formatHorarios() {
 }
 
 function formatPromociones() {
-  if (!business.promociones.length) return '  Sin promociones activas.';
-  return business.promociones
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const active = business.promociones.filter((p) => !p.vigenteHasta || p.vigenteHasta >= today);
+  if (!active.length) return '  Sin promociones activas.';
+  return active
     .map((p) => `  - ${p.nombre}: ${p.descripcion} (vigente hasta ${p.vigenteHasta}). ${p.condiciones}`)
     .join('\n');
 }

@@ -7,7 +7,6 @@ const appointmentService = require('./appointmentService');
 const appointmentsRepo = require('../db/appointments.repository');
 const handoffsRepo = require('../db/handoffs.repository');
 const leadsRepo = require('../db/leads.repository');
-const leadClassifier = require('./leadClassifier');
 const whatsappService = require('./whatsappService');
 const business = require('../utils/businessConfig');
 
@@ -212,8 +211,9 @@ async function handleMessage(phone, userMessage) {
 
   await conversationsRepo.saveMessage(phone, 'assistant', finalText);
 
-  // CRM: clasificar si paso suficiente tiempo desde la ultima clasificacion (opcion C)
-  leadClassifier.maybeClassify(phone).catch(() => {});
+  // Lead classification is now handled inline via the clasificar_lead tool
+  // (the AI calls it on every response as instructed in the system prompt).
+  // The separate maybeClassify call was removed to avoid double API cost.
 
   return finalText;
 }

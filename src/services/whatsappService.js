@@ -2,27 +2,42 @@ const axios = require('axios');
 const config = require('../utils/config');
 const logger = require('../utils/logger');
 
-// Envía un mensaje de texto por Evolution API.
-async function sendMessage(phone, text) {
+// Envía un mensaje de texto por Evolution API con retry.
+async function sendMessage(phone, text, retries = 2) {
   const url = `${config.evolutionApiUrl}/message/sendText/${config.evolutionInstance}`;
 
-  try {
-    await axios.post(
-      url,
-      { number: phone, text },
-      {
-        headers: {
-          apikey: config.evolutionApiKey,
-          'Content-Type': 'application/json',
-        },
-        timeout: 15000,
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await axios.post(
+        url,
+        { number: phone, text },
+        {
+          headers: {
+            apikey: config.evolutionApiKey,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        }
+      );
+      return true;
+    } catch (err) {
+      const status = err.response?.status;
+      // Don't retry on 4xx (except 429 rate limit)
+      if (status && status >= 400 && status < 500 && status !== 429) {
+        logger.error(`Error al enviar mensaje a ${phone} (${status}):`, err.response?.data || err.message);
+        return false;
       }
-    );
-    return true;
-  } catch (err) {
-    logger.error(`Error al enviar mensaje por WhatsApp a ${phone}:`, err.response?.data || err.message);
-    return false;
+      if (attempt < retries) {
+        const delay = (attempt + 1) * 2000; // 2s, 4s
+        logger.warn(`[WhatsApp] Retry ${attempt + 1}/${retries} para ${phone} en ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        logger.error(`Error al enviar mensaje a ${phone} tras ${retries + 1} intentos:`, err.response?.data || err.message);
+        return false;
+      }
+    }
   }
+  return false;
 }
 
 // Evolution API manda distintos formatos de evento (messages.upsert, etc).

@@ -250,15 +250,25 @@ router.get('/dashboard/api/agenda', async (req, res) => {
   });
 });
 
+const VALID_STATUSES = ['pendiente', 'confirmado', 'curso', 'finalizado', 'cancelado', 'noasistio'];
+
 // POST /dashboard/api/appointment — create or update
 router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
   try {
     const b = req.body;
+    // Validate status if provided
+    if (b.status && !VALID_STATUSES.includes(b.status)) {
+      return res.status(400).json({ error: `Estado inválido: ${b.status}` });
+    }
     // If only id+status → quick status change
     if (b.id && b.status && !b.name) {
       const pool = require('../db/pool');
       await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [b.status, b.id]);
       return res.json({ ok: true });
+    }
+    // Validate date format
+    if (b.date && !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) {
+      return res.status(400).json({ error: 'Formato de fecha inválido (YYYY-MM-DD)' });
     }
     const timeStr = b.time || (b.from != null ? `${String(Math.floor(b.from / 60)).padStart(2, '0')}:${String(b.from % 60).padStart(2, '0')}` : '08:00');
     const saved = await appointmentsRepo.saveFull({
@@ -364,6 +374,7 @@ router.get('/dashboard/mensajes', async (req, res) => {
           </label>
         </div>
     <div class="chat-msgs">${chat
+      .filter((m) => !m.content.startsWith('[SISTEMA INTERNO'))
       .map(
         (m) =>
           `<div class="bubble bubble-${m.role}">${escapeHtml(m.content)}<span class="t">${fmtTime(m.created_at)}</span></div>`

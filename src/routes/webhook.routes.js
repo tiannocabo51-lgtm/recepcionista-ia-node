@@ -8,8 +8,36 @@ const followUpService = require('../services/followUpService');
 
 const router = express.Router();
 
+// Simple in-memory rate limiter per phone
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX = 10; // max 10 messages per minute per phone
+
+function isRateLimited(phone) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(phone);
+  if (!entry || now - entry.start > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(phone, { start: now, count: 1 });
+    return false;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) {
+    logger.warn(`[RateLimit] ${phone} excedió ${RATE_LIMIT_MAX} msgs/min`);
+    return true;
+  }
+  return false;
+}
+
+// Cleanup stale entries every 5 min
+setInterval(() => {
+  const now = Date.now();
+  for (const [phone, entry] of rateLimitMap) {
+    if (now - entry.start > RATE_LIMIT_WINDOW_MS * 2) rateLimitMap.delete(phone);
+  }
+}, 300000);
+
 function isAuthorized(req) {
-  if (!config.webhookVerifyToken) return true; // sin token configurado, no se valida
+  if (!config.webhookVerifyToken) return true;
   return req.query.token === config.webhookVerifyToken;
 }
 
@@ -42,6 +70,9 @@ router.post('/webhook', async (req, res) => {
     logger.info(`Contacto bloqueado ${parsed.phone}, ignorando`);
     return;
   }
+
+  // Rate limit check
+  if (isRateLimited(parsed.phone)) return;
 
   // Lead respondió → resetear contador de seguimientos
   followUpService.resetFollowUp(parsed.phone).catch(() => {});
