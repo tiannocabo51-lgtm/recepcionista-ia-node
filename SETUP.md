@@ -98,3 +98,10 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
 - **Rebuild**: después de editar código, siempre `docker compose up -d --build app` (no solo restart).
 - **Audios**: necesitan GROQ_API_KEY configurada. Sin ella, el bot pide que escriban por texto.
 - **Toggle IA/Humano**: desde el dashboard se puede desactivar la IA por chat para que responda un humano.
+- **Seguimiento automático de leads**: viene activado por defecto. Cada hora chequea leads estancados (estado "nuevo" o "consultando") y les manda un mensaje de seguimiento:
+  - 1er seguimiento: a las 24hs sin respuesta
+  - 2do seguimiento: a las 72hs sin respuesta
+  - Máximo 2 seguimientos por lead, después no le escribe más
+  - Solo manda en horario comercial (9 a 20hs, nunca domingos)
+  - Notifica al dueño del negocio cada vez que manda un seguimiento
+  - Si el lead responde, se resetea el contador automáticamente
