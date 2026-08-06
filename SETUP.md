@@ -112,3 +112,9 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
 - **Contactos bloqueados**: para clientes que usan WhatsApp personal/laboral, se pueden bloquear contactos desde Ajustes en el dashboard. La IA no les responde. También se pueden cargar contactos iniciales en `businessConfig.js` > `contactosBloqueados`.
 - **Agenda interactiva**: el dashboard tiene una agenda completa con drag-drop de turnos, bloqueo de horarios, colores por estado, vista semana/día/mes/timeline. Las migraciones de la DB se ejecutan automáticamente al arrancar la app (no hace falta tocar la DB).
 - **Migraciones automáticas**: al hacer `docker compose up`, la app detecta columnas y tablas faltantes y las agrega sola. No hace falta ejecutar SQL manualmente.
+- **Estadísticas mensuales**: nueva página `/dashboard/estadisticas` con resumen del mes (turnos, ingresos, servicios más pedidos, funnel de leads, tasa de cancelación).
+- **Exportar leads/turnos a CSV**: desde la página de Leads hay un botón "📥 CSV". También se puede exportar turnos por rango de fechas via API: `GET /dashboard/api/appointments/export?from=2026-01-01&to=2026-01-31`.
+- **Multi-profesional**: configurar profesionales en `businessConfig.js` > `profesionales`. La agenda los muestra como columnas separadas.
+- **Rate limiting**: máximo 10 mensajes por minuto por teléfono en el webhook. Protege contra spam y ahorra costo de API.
+- **Limpieza automática**: los mensajes de conversación de más de 90 días se eliminan automáticamente al iniciar la app.
+- **`ALERT_PHONE`**: opcional en `.env`. Número para alertas de desconexión. Si no se configura, usa `RECEPTIONIST_PHONE`.

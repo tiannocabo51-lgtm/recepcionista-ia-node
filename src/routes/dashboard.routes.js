@@ -220,6 +220,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <a href="${B}/dashboard/agenda" class="active">Agenda</a>
     <a href="${B}/dashboard/mensajes">Mensajes</a>
     <a href="${B}/dashboard/leads">Leads</a>
+    <a href="${B}/dashboard/estadisticas">Estadísticas</a>
     <a href="${B}/dashboard/derivaciones">Derivaciones</a>
     <a href="${B}/dashboard/ajustes">Ajustes</a>
   </div>
@@ -287,7 +288,7 @@ router.get('/dashboard/api/agenda', async (req, res) => {
 
   res.json({
     hours: { start: hStart, end: hEnd },
-    professionals: [{ id: 1, name: business.nombreRecepcionista || 'Profesional', color: '#818cf8' }],
+    professionals: (business.profesionales || [{ id: 1, nombre: business.nombreRecepcionista, color: '#818cf8' }]).map(p => ({ id: p.id, name: p.nombre, color: p.color })),
     services,
     appointments,
     blocks: blocksList,
@@ -600,11 +601,151 @@ router.get('/dashboard/leads', async (req, res) => {
     + '<h1>Leads</h1><p class="sub">' + filtroLabel + '</p>'
     + '<div class="lead-cards">' + cards + '</div>'
     + toggle
-    + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"></div>' : '')
+    + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"><a class="btn" href="' + B + '/dashboard/api/leads/export" title="Exportar CSV">📥 CSV</a></div>' : '')
     + cuerpo
     + '<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}</script>';
   const badges = await getNavBadges();
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true, badges }));
+});
+
+// ── API: CSV export ──────────────────────────────────────────────────
+router.get('/dashboard/api/leads/export', async (req, res) => {
+  try {
+    const leads = await leadsRepo.listLeads(null);
+    const header = 'Teléfono,Nombre,Estado,Interés,Último contacto\n';
+    const rows = leads.map(l =>
+      [l.phone, l.nombre || '', l.estado, l.interes || '', l.ultimo_contacto ? new Date(l.ultimo_contacto).toISOString() : '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=leads_${today()}.csv`);
+    res.send('﻿' + header + rows); // BOM for Excel UTF-8
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/dashboard/api/appointments/export', async (req, res) => {
+  try {
+    const from = req.query.from || today();
+    const to = req.query.to || today();
+    const appts = await appointmentsRepo.findRange(from, to);
+    const header = 'ID,Nombre,Teléfono,Servicio,Fecha,Hora,Estado,Duración,Precio\n';
+    const rows = appts.map(a =>
+      [a.id, a.name, a.phone, a.service, a.appointment_date, (a.appointment_time || '').slice(0, 5), a.status, a.duration, a.price]
+        .map(v => `"${String(v || '').replace(/"/g, '""')}"`)
+        .join(',')
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=turnos_${from}_${to}.csv`);
+    res.send('﻿' + header + rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Estadísticas mensuales ─────────────────────────────────────────────
+router.get('/dashboard/estadisticas', async (req, res) => {
+  const online = await agentOnline();
+  const pool = require('../db/pool');
+
+  // Get stats for the current month and last month
+  const [monthlyAppts, monthlyConvs, monthlyLeads, topServices] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status IN ('confirmado','curso','finalizado'))::int AS atendidos,
+        COUNT(*) FILTER (WHERE status = 'cancelado')::int AS cancelados,
+        COUNT(*) FILTER (WHERE status = 'noasistio')::int AS noasistio,
+        COALESCE(SUM(price) FILTER (WHERE status IN ('confirmado','curso','finalizado')), 0)::numeric AS ingresos
+      FROM appointments
+      WHERE appointment_date >= date_trunc('month', CURRENT_DATE)
+    `),
+    pool.query(`
+      SELECT COUNT(*)::int AS total,
+             COUNT(DISTINCT phone)::int AS clientes_unicos
+      FROM conversations
+      WHERE created_at >= date_trunc('month', CURRENT_DATE)
+    `),
+    pool.query(`
+      SELECT estado, COUNT(*)::int AS n
+      FROM leads
+      GROUP BY estado
+    `),
+    pool.query(`
+      SELECT service, COUNT(*)::int AS n
+      FROM appointments
+      WHERE appointment_date >= date_trunc('month', CURRENT_DATE) AND status != 'cancelado'
+      GROUP BY service ORDER BY n DESC LIMIT 8
+    `),
+  ]);
+
+  const ma = monthlyAppts.rows[0];
+  const mc = monthlyConvs.rows[0];
+  const mesLabel = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', month: 'long', year: 'numeric' });
+
+  // Top services mini-chart
+  const maxSvc = Math.max(...topServices.rows.map(s => s.n), 1);
+  const svcBars = topServices.rows.map(s => {
+    const pct = Math.round((s.n / maxSvc) * 100);
+    return `<div class="svc-bar-row"><span class="svc-bar-name">${escapeHtml(s.service)}</span><div class="svc-bar-track"><div class="svc-bar-fill" style="width:${pct}%"></div></div><span class="svc-bar-num">${s.n}</span></div>`;
+  }).join('') || '<p class="empty">Sin turnos este mes.</p>';
+
+  // Lead funnel
+  const leadStates = {};
+  monthlyLeads.rows.forEach(r => { leadStates[r.estado] = r.n; });
+  const funnelOrder = ['nuevo', 'consultando', 'turno', 'cliente', 'frio'];
+  const totalLeads = funnelOrder.reduce((s, e) => s + (leadStates[e] || 0), 0) || 1;
+  const funnel = funnelOrder.map(e => {
+    const n = leadStates[e] || 0;
+    const pct = Math.round((n / totalLeads) * 100);
+    const info = { nuevo: '🆕', consultando: '👀', turno: '📅', cliente: '⭐', frio: '❄️' };
+    return `<div class="fun-row"><span class="fun-ico">${info[e]}</span><span class="fun-lbl">${e}</span><div class="fun-track"><div class="fun-fill fun-${e}" style="width:${pct}%"></div></div><span class="fun-num">${n}</span></div>`;
+  }).join('');
+
+  const tasaCancel = ma.total ? Math.round((ma.cancelados / ma.total) * 100) : 0;
+  const tasaNoShow = ma.total ? Math.round((ma.noasistio / ma.total) * 100) : 0;
+
+  const content = `<style>
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center}
+.stat-card .sc-v{font-size:2rem;font-weight:700;letter-spacing:-.03em}
+.stat-card .sc-l{font-size:.75rem;color:var(--mut);margin-top:4px}
+.stat-card.sc-green .sc-v{color:var(--ok)}.stat-card.sc-red .sc-v{color:var(--bad)}.stat-card.sc-blue .sc-v{color:#38bdf8}.stat-card.sc-purple .sc-v{color:var(--acc2)}
+.stat-panels{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.stat-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.stat-panel h3{font-size:.9rem;margin-bottom:14px}
+.svc-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:.82rem}
+.svc-bar-name{width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.svc-bar-track{flex:1;height:12px;background:var(--card2);border-radius:6px;overflow:hidden}
+.svc-bar-fill{height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:6px}
+.svc-bar-num{width:30px;text-align:right;font-weight:600;flex-shrink:0}
+.fun-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:.82rem}
+.fun-ico{font-size:1rem;width:24px;text-align:center;flex-shrink:0}
+.fun-lbl{width:90px;text-transform:capitalize;flex-shrink:0}
+.fun-track{flex:1;height:14px;background:var(--card2);border-radius:7px;overflow:hidden}
+.fun-fill{height:100%;border-radius:7px}
+.fun-nuevo{background:#94a3b8}.fun-consultando{background:var(--warn)}.fun-turno{background:var(--acc2)}.fun-cliente{background:var(--ok)}.fun-frio{background:#60a5fa}
+.fun-num{width:30px;text-align:right;font-weight:600;flex-shrink:0}
+@media(max-width:760px){.stat-panels{grid-template-columns:1fr}.svc-bar-name{width:100px}}
+</style>
+<h1>Estadísticas</h1>
+<p class="sub" style="text-transform:capitalize">${mesLabel}</p>
+<div class="stat-grid">
+  <div class="stat-card sc-blue"><div class="sc-v">${ma.total}</div><div class="sc-l">Turnos del mes</div></div>
+  <div class="stat-card sc-green"><div class="sc-v">${ma.atendidos}</div><div class="sc-l">Atendidos</div></div>
+  <div class="stat-card sc-green"><div class="sc-v">$${Number(ma.ingresos).toLocaleString('es-AR')}</div><div class="sc-l">Ingresos del mes</div></div>
+  <div class="stat-card sc-purple"><div class="sc-v">${mc.clientes_unicos}</div><div class="sc-l">Clientes únicos</div></div>
+  <div class="stat-card"><div class="sc-v">${mc.total}</div><div class="sc-l">Mensajes del mes</div></div>
+  <div class="stat-card sc-red"><div class="sc-v">${tasaCancel}%</div><div class="sc-l">Tasa cancelación</div></div>
+</div>
+<div class="stat-panels">
+  <div class="stat-panel"><h3>🏆 Servicios más pedidos</h3>${svcBars}</div>
+  <div class="stat-panel"><h3>📊 Funnel de leads (total)</h3>${funnel}</div>
+</div>`;
+  const badges = await getNavBadges();
+  res.send(renderPage({ active: 'estadisticas', agentOnline: online, content, wide: true, badges }));
 });
 
 // ── API: Contactos bloqueados ──────────────────────────────────────────

@@ -17,6 +17,7 @@ const NAV = [
   ['agenda', 'Agenda', B + '/dashboard/agenda'],
   ['mensajes', 'Mensajes', B + '/dashboard/mensajes'],
   ['leads', 'Leads', B + '/dashboard/leads'],
+  ['estadisticas', 'Estadísticas', B + '/dashboard/estadisticas'],
   ['derivaciones', 'Derivaciones', B + '/dashboard/derivaciones'],
   ['ajustes', 'Ajustes', B + '/dashboard/ajustes'],
 ];

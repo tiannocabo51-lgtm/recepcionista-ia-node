@@ -8,6 +8,12 @@ module.exports = {
   instagram: '@simaxface_',
   whatsappHumano: process.env.RECEPTIONIST_PHONE || '5492235192504',
 
+  // Profesionales del negocio (para la agenda multi-profesional)
+  profesionales: [
+    { id: 1, nombre: 'Cyra', color: '#818cf8' },
+    // { id: 2, nombre: 'Otra profesional', color: '#f472b6' },
+  ],
+
   ubicacion: {
     direccion: 'Garay 922',
     ciudad: 'Mar del Plata',
