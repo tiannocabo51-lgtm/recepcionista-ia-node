@@ -116,6 +116,12 @@ module.exports = {
     },
   ],
 
+  // Contactos personales del dueño — la IA NO les responde.
+  // Poner números con código de país, ej: '5492235551234'
+  contactosBloqueados: [
+    // '5492235551234',  ← ejemplo
+  ],
+
   temasQueDerivanAHumano: [
     'quejas o reclamos',
     'consultas médicas o dermatológicas que requieran evaluación de una profesional',
