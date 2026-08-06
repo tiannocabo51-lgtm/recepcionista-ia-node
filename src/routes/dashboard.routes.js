@@ -348,9 +348,13 @@ router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
     // If only id+status → quick status change
     if (b.id && b.status && !b.name) {
       const pool = require('../db/pool');
+      const old = await pool.query('SELECT name, service, appointment_date, appointment_time FROM appointments WHERE id=$1', [b.id]);
       await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [b.status, b.id]);
-      if (b.status === 'cancelado') fireWebhook('cancelled_appointment', { id: b.id, status: b.status });
-      if (b.status === 'finalizado') fireWebhook('completed_appointment', { id: b.id, status: b.status });
+      const appt = old.rows[0];
+      if (appt && business.whatsappHumano) {
+        if (b.status === 'cancelado') notifyOwner(`❌ Turno cancelado desde el panel:\n${appt.name} — ${appt.service}\n${appt.appointment_date} a las ${appt.appointment_time?.slice(0,5)}`);
+        if (b.status === 'finalizado') notifyOwner(`✅ Turno completado:\n${appt.name} — ${appt.service}`);
+      }
       return res.json({ ok: true });
     }
     // Validate date format
@@ -374,7 +378,7 @@ router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
       professional: b.pro || b.professional || 1,
       notes: b.notes || '',
     });
-    if (!b.id) fireWebhook('new_appointment', { name: b.name, phone: b.phone, service: b.srv, date: b.date, time: timeStr });
+    if (!b.id && business.whatsappHumano) notifyOwner(`📅 Nuevo turno desde el panel:\n${b.name} — ${b.srv || b.service}\n${b.date} a las ${timeStr}`);
     res.json(saved);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -957,15 +961,6 @@ router.get('/dashboard/ajustes', async (req, res) => {
   ${promoHtml}
 </div>
 <div class="block-section">
-  <h3>🔗 Webhook externo (n8n / Zapier / Make)</h3>
-  <p style="font-size:.82rem;color:var(--mut);margin-bottom:10px">Recibí notificaciones automáticas cuando se crean, cancelan o completan turnos. Configurá <code>WEBHOOK_EXTERNAL_URL</code> en tu <code>.env</code>.</p>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span style="font-size:.82rem;font-weight:600">${config.webhookExternalUrl ? '✅ ' + escapeHtml(config.webhookExternalUrl) : '❌ No configurado'}</span>
-    ${config.webhookExternalUrl ? '<button class="btn btn-sm" onclick="testWebhook()">🧪 Probar</button>' : ''}
-  </div>
-  <p style="font-size:.72rem;color:var(--mut);margin-top:8px">Eventos: <code>new_appointment</code>, <code>cancelled_appointment</code>, <code>completed_appointment</code>, <code>test</code></p>
-</div>
-<div class="block-section">
   <h3>🚫 Contactos bloqueados (la IA no les responde)</h3>
   <div class="block-list">${bloqueados}</div>
   <div class="block-add">
@@ -974,13 +969,6 @@ router.get('/dashboard/ajustes', async (req, res) => {
   </div>
 </div>
 <script>
-async function testWebhook(){
-  try{
-    var r=await fetch('${B}/dashboard/api/webhook/test',{method:'POST',headers:{'Content-Type':'application/json'}});
-    var d=await r.json();
-    alert(d.ok?'✅ Webhook enviado correctamente':'❌ Error: '+(d.error||'desconocido'));
-  }catch(e){alert('Error: '+e.message)}
-}
 async function blockContact(){
   const phone=document.getElementById('blockPhone').value.trim();
   if(!phone)return;
@@ -1022,32 +1010,10 @@ router.get('/dashboard/api/stats', async (req, res) => {
   }
 });
 
-// ── Webhook for external integrations (n8n / Zapier / Make) ────────────
-// Events: new_appointment, cancelled_appointment, new_lead, new_handoff
-// Config: set WEBHOOK_EXTERNAL_URL in .env to enable
-router.post('/dashboard/api/webhook/test', express.json(), async (req, res) => {
-  const url = config.webhookExternalUrl;
-  if (!url) return res.status(400).json({ error: 'WEBHOOK_EXTERNAL_URL not configured in .env' });
-  try {
-    const axios = require('axios');
-    await axios.post(url, { event: 'test', timestamp: new Date().toISOString(), business: business.nombre }, { timeout: 5000 });
-    res.json({ ok: true, url });
-  } catch (e) {
-    res.status(500).json({ error: 'Could not reach webhook URL: ' + e.message });
-  }
-});
-
-// Called internally when events happen — not an HTTP route, just a helper
-async function fireWebhook(event, data) {
-  const url = config.webhookExternalUrl;
-  if (!url) return;
-  try {
-    const axios = require('axios');
-    await axios.post(url, { event, timestamp: new Date().toISOString(), business: business.nombre, data }, { timeout: 5000 });
-  } catch (e) {
-    require('../utils/logger').warn('[Webhook] Failed to fire ' + event + ': ' + e.message);
-  }
+// ── Notify owner via WhatsApp ───────────────────────────────────────────
+function notifyOwner(text) {
+  if (!business.whatsappHumano) return;
+  whatsappService.sendMessage(business.whatsappHumano, text).catch(() => {});
 }
 
 module.exports = router;
-module.exports.fireWebhook = fireWebhook;
