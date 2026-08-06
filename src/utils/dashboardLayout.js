@@ -44,12 +44,15 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light')</script>
 <title>${escapeHtml(business.nombre)} - Panel</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   :root { --bg:#0b0f1a; --card:#121828; --card2:#171f33; --line:#232d47; --txt:#e6eaf2; --mut:#8b96ad; --acc:#6366f1; --acc2:#818cf8; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; }
-  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; }
-  header { position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:20px; padding:14px 28px; background:rgba(11,15,26,.8); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  :root.light { --bg:#f4f6fa; --card:#ffffff; --card2:#eef0f6; --line:#d8dce6; --txt:#1a1d26; --mut:#6b7280; --acc:#6366f1; --acc2:#4f46e5; --ok:#059669; --warn:#d97706; --bad:#dc2626; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; transition:background .3s,color .3s; }
+  header { position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:20px; padding:14px 28px; background:rgba(11,15,26,.8); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); transition:background .3s; }
+  .light header { background:rgba(244,246,250,.85); }
   .brand { font-weight:700; font-size:1.05rem; letter-spacing:-.02em; }
   .status { font-size:.78rem; color:var(--mut); display:flex; align-items:center; gap:6px; }
   .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
@@ -62,6 +65,8 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   .nav-link:hover { color:var(--txt); background:var(--card2); }
   .nav-link.active { color:#fff; background:var(--acc); }
   .nav-badge { background:var(--bad); color:#fff; font-size:.6rem; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:6px; min-width:16px; text-align:center; }
+  .theme-btn { width:34px; height:34px; border-radius:8px; border:1px solid var(--line); background:var(--card2); color:var(--mut); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .18s; font-size:1rem; flex-shrink:0; }
+  .theme-btn:hover { border-color:var(--acc2); color:var(--txt); }
   #menu-toggle, .hamburger { display:none; }
   main { max-width:${wide ? '1400px' : '1100px'}; margin:0 auto; padding:36px 28px 60px; }
   h1 { font-size:1.5rem; letter-spacing:-.02em; margin-bottom:6px; }
@@ -106,7 +111,7 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   .bubble { max-width:72%; padding:9px 13px; border-radius:14px; font-size:.86rem; line-height:1.45; }
   .bubble .t { display:block; font-size:.64rem; color:rgba(255,255,255,.5); margin-top:4px; }
   .bubble-user { align-self:flex-start; background:var(--card2); border-bottom-left-radius:4px; }
-  .bubble-assistant { align-self:flex-end; background:var(--acc); border-bottom-right-radius:4px; }
+  .bubble-assistant { align-self:flex-end; background:var(--acc); color:#fff; border-bottom-right-radius:4px; }
   .chat-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--mut); font-size:.9rem; }
   .hand-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:14px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .hand-info .hphone { font-weight:600; font-size:.95rem; }
@@ -181,10 +186,21 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
     <div class="brand">${escapeHtml(business.nombre)}</div>
     <div class="status">${status} <span class="sync">· actualizado ${now}</span></div>
   </div>
+  <button class="theme-btn" id="themeBtn" title="Cambiar tema">🌙</button>
   <input type="checkbox" id="menu-toggle">
   <label for="menu-toggle" class="hamburger">☰</label>
   <nav>${navLinks}</nav>
 </header>
+<script>
+(function(){
+  var t=localStorage.getItem('theme');
+  if(t==='light')document.documentElement.classList.add('light');
+  var b=document.getElementById('themeBtn');
+  function upd(){var l=document.documentElement.classList.contains('light');b.textContent=l?'☀️':'🌙';b.title=l?'Tema oscuro':'Tema claro'}
+  upd();
+  b.onclick=function(){document.documentElement.classList.toggle('light');localStorage.setItem('theme',document.documentElement.classList.contains('light')?'light':'dark');upd()};
+})();
+</script>
 <main>
 ${content}
 </main>
