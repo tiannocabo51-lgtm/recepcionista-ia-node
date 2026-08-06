@@ -67,6 +67,19 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   .nav-badge { background:var(--bad); color:#fff; font-size:.6rem; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:6px; min-width:16px; text-align:center; }
   .theme-btn { width:34px; height:34px; border-radius:8px; border:1px solid var(--line); background:var(--card2); color:var(--mut); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .18s; font-size:1rem; flex-shrink:0; }
   .theme-btn:hover { border-color:var(--acc2); color:var(--txt); }
+  .gsearch { position:relative; }
+  .gsearch input { width:180px; padding:8px 12px 8px 32px; border-radius:8px; border:1px solid var(--line); background:var(--card2); color:var(--txt); font-size:.82rem; outline:none; transition:all .2s; }
+  .gsearch input:focus { border-color:var(--acc2); width:260px; }
+  .gsearch::before { content:'🔍'; position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:.7rem; }
+  .gsearch-results { position:absolute; top:calc(100% + 6px); left:0; width:340px; max-height:400px; overflow-y:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:0 16px 40px -14px rgba(0,0,0,.7); z-index:200; display:none; }
+  .gsearch-results.on { display:block; }
+  .gsr-section { padding:8px 12px 4px; font-size:.68rem; font-weight:700; color:var(--mut); text-transform:uppercase; letter-spacing:.06em; }
+  .gsr-item { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; transition:background .12s; text-decoration:none; color:var(--txt); font-size:.84rem; }
+  .gsr-item:hover { background:var(--card2); }
+  .gsr-item .gi-icon { font-size:.9rem; flex-shrink:0; }
+  .gsr-item .gi-name { font-weight:600; }
+  .gsr-item .gi-sub { font-size:.72rem; color:var(--mut); }
+  .gsr-empty { padding:16px; text-align:center; color:var(--mut); font-size:.82rem; }
   #menu-toggle, .hamburger { display:none; }
   main { max-width:${wide ? '1400px' : '1100px'}; margin:0 auto; padding:36px 28px 60px; }
   h1 { font-size:1.5rem; letter-spacing:-.02em; margin-bottom:6px; }
@@ -123,6 +136,7 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   @media (max-width:760px) {
     header { flex-wrap:wrap; padding:12px 16px; }
     .hamburger { display:block; margin-left:auto; font-size:1.4rem; cursor:pointer; color:var(--txt); }
+    .gsearch { display:none; }
     nav { display:none; width:100%; flex-direction:column; margin:8px 0 0; }
     nav .nav-link { padding:12px 16px; font-size:.95rem; border-bottom:1px solid var(--line); }
     #menu-toggle:checked ~ nav { display:flex; }
@@ -186,6 +200,10 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
     <div class="brand">${escapeHtml(business.nombre)}</div>
     <div class="status">${status} <span class="sync">· actualizado ${now}</span></div>
   </div>
+  <div class="gsearch">
+    <input id="gsInput" placeholder="Buscar cliente, turno…" autocomplete="off">
+    <div class="gsearch-results" id="gsResults"></div>
+  </div>
   <button class="theme-btn" id="themeBtn" title="Cambiar tema">🌙</button>
   <input type="checkbox" id="menu-toggle">
   <label for="menu-toggle" class="hamburger">☰</label>
@@ -199,6 +217,23 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   function upd(){var l=document.documentElement.classList.contains('light');b.textContent=l?'☀️':'🌙';b.title=l?'Tema oscuro':'Tema claro'}
   upd();
   b.onclick=function(){document.documentElement.classList.toggle('light');localStorage.setItem('theme',document.documentElement.classList.contains('light')?'light':'dark');upd()};
+})();
+// Global search
+(function(){
+  var inp=document.getElementById('gsInput'),box=document.getElementById('gsResults'),timer=null,BP='${B}';
+  if(!inp)return;
+  inp.oninput=function(){clearTimeout(timer);var q=inp.value.trim();if(q.length<2){box.classList.remove('on');return}
+    timer=setTimeout(async function(){
+      try{var r=await fetch(BP+'/dashboard/api/search?q='+encodeURIComponent(q));var d=await r.json();var h='';
+        if(d.leads.length){h+='<div class="gsr-section">Leads</div>';d.leads.forEach(function(l){h+='<a class="gsr-item" href="'+BP+'/dashboard/leads"><span class="gi-icon">👤</span><div><div class="gi-name">'+(l.nombre||l.phone)+'</div><div class="gi-sub">'+l.status+'</div></div></a>'})}
+        if(d.appointments.length){h+='<div class="gsr-section">Turnos</div>';d.appointments.forEach(function(a){h+='<a class="gsr-item" href="'+BP+'/dashboard/agenda"><span class="gi-icon">📅</span><div><div class="gi-name">'+a.name+'</div><div class="gi-sub">'+a.service+' · '+a.appointment_date+'</div></div></a>'})}
+        if(d.conversations.length){h+='<div class="gsr-section">Conversaciones</div>';d.conversations.forEach(function(c){h+='<a class="gsr-item" href="'+BP+'/dashboard/mensajes?phone='+encodeURIComponent(c.phone)+'"><span class="gi-icon">💬</span><div><div class="gi-name">'+c.phone+'</div><div class="gi-sub">'+c.content.slice(0,50)+'</div></div></a>'})}
+        if(!h)h='<div class="gsr-empty">Sin resultados para "'+q+'"</div>';
+        box.innerHTML=h;box.classList.add('on');
+      }catch(e){}
+    },300)};
+  document.addEventListener('click',function(e){if(!e.target.closest('.gsearch'))box.classList.remove('on')});
+  inp.onkeydown=function(e){if(e.key==='Escape'){box.classList.remove('on');inp.blur()}};
 })();
 </script>
 <main>

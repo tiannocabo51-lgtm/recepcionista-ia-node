@@ -10,6 +10,7 @@ const { renderPage, escapeHtml } = require('../utils/dashboardLayout');
 const { mondayOf, addDays } = require('../utils/weekCalendarView');
 const agendaView = require('../utils/agendaView');
 const blocksRepo = require('../db/blocks.repository');
+const whatsappService = require('../services/whatsappService');
 
 const router = express.Router();
 const B = config.basePath; // e.g. '/simaxface' or ''
@@ -24,6 +25,43 @@ async function getNavBadges() {
     return badges;
   } catch { return {}; }
 }
+
+// ── Send WhatsApp reply from dashboard ─────────────────────────────────
+router.post('/dashboard/api/send-reply', express.json(), async (req, res) => {
+  const { phone, message } = req.body;
+  if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
+  try {
+    const sent = await whatsappService.sendMessage(phone, message.trim());
+    if (sent) {
+      // Save to conversations so it shows in chat
+      const pool = require('../db/pool');
+      await pool.query(
+        'INSERT INTO conversations (phone, role, content) VALUES ($1, $2, $3)',
+        [phone, 'assistant', `[HUMANO] ${message.trim()}`]
+      );
+    }
+    res.json({ ok: sent });
+  } catch (e) {
+    res.status(500).json({ error: 'send failed' });
+  }
+});
+
+// ── Global search ──────────────────────────────────────────────────────
+router.get('/dashboard/api/search', async (req, res) => {
+  const q = (req.query.q || '').trim().toLowerCase();
+  if (!q || q.length < 2) return res.json({ leads: [], appointments: [], conversations: [] });
+  try {
+    const pool = require('../db/pool');
+    const [leads, appts, convs] = await Promise.all([
+      pool.query(`SELECT id, phone, nombre, status, created_at FROM leads WHERE LOWER(nombre) LIKE $1 OR phone LIKE $1 ORDER BY created_at DESC LIMIT 8`, [`%${q}%`]),
+      pool.query(`SELECT id, name, phone, service, appointment_date, appointment_time, status FROM appointments WHERE LOWER(name) LIKE $1 OR phone LIKE $1 OR LOWER(service) LIKE $1 ORDER BY appointment_date DESC LIMIT 8`, [`%${q}%`]),
+      pool.query(`SELECT DISTINCT ON (phone) phone, content, created_at FROM conversations WHERE phone LIKE $1 OR LOWER(content) LIKE $1 ORDER BY phone, created_at DESC LIMIT 8`, [`%${q}%`]),
+    ]);
+    res.json({ leads: leads.rows, appointments: appts.rows, conversations: convs.rows });
+  } catch (e) {
+    res.status(500).json({ error: 'search failed' });
+  }
+});
 
 router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
   const { phone, enabled } = req.body;
@@ -424,10 +462,19 @@ router.get('/dashboard/mensajes', async (req, res) => {
     <div class="chat-msgs">${chat
       .filter((m) => !m.content.startsWith('[SISTEMA INTERNO'))
       .map(
-        (m) =>
-          `<div class="bubble bubble-${m.role}">${escapeHtml(m.content)}<span class="t">${fmtTime(m.created_at)}</span></div>`
+        (m) => {
+          const isHuman = m.content.startsWith('[HUMANO] ');
+          const content = isHuman ? m.content.slice(9) : m.content;
+          const cls = isHuman ? 'bubble-human' : `bubble-${m.role}`;
+          const tag = isHuman ? '<span style="font-size:.65rem;opacity:.6;margin-right:4px">👤</span>' : '';
+          return `<div class="bubble ${cls}">${tag}${escapeHtml(content)}<span class="t">${fmtTime(m.created_at)}</span></div>`;
+        }
       )
-      .join('')}</div>`
+      .join('')}</div>
+    <div class="chat-input">
+      <input type="text" id="replyMsg" placeholder="Escribí un mensaje…" autocomplete="off">
+      <button id="sendBtn" title="Enviar">➤</button>
+    </div>`
       : '<div class="chat-empty">Elegí una conversación para ver el chat</div>';
   const content = `<style>
 .conv-num{font-size:.7rem;color:var(--mut);margin-left:6px;font-weight:400}
@@ -443,6 +490,13 @@ router.get('/dashboard/mensajes', async (req, res) => {
 .ai-toggle input:checked+.ai-slider{background:var(--ok)}
 .ai-toggle input:checked+.ai-slider::after{transform:translateX(20px)}
 .ai-label{font-size:.78rem;font-weight:600;min-width:65px}
+.chat-input{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--card2)}
+.chat-input input{flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:.88rem;outline:none;transition:border .18s}
+.chat-input input:focus{border-color:var(--acc2)}
+.chat-input button{padding:10px 16px;border-radius:10px;background:var(--acc);color:#fff;border:none;font-size:1rem;cursor:pointer;font-weight:700;transition:all .18s}
+.chat-input button:hover{background:var(--acc2);transform:scale(1.05)}
+.chat-input button:disabled{opacity:.4;cursor:default;transform:none}
+.bubble-human{align-self:flex-end;background:var(--warn);color:#1a1d26;border-bottom-right-radius:4px}
 .chat-back{display:none;color:var(--acc2);text-decoration:none;font-size:1.3rem;font-weight:700;padding:0 8px 0 0}
 @media(max-width:760px){
   .chat-wrap.has-sel .conv-list{display:none}
@@ -468,6 +522,26 @@ router.get('/dashboard/mensajes', async (req, res) => {
 </div>
 <script>
 const m=document.querySelector('.chat-msgs');if(m)m.scrollTop=m.scrollHeight;
+// Send reply
+var selPhone='${sel ? escapeHtml(sel).replace(/'/g, "\\'") : ''}';
+var inp=document.getElementById('replyMsg'),btn=document.getElementById('sendBtn');
+if(inp&&btn){
+  async function sendReply(){
+    var msg=inp.value.trim();if(!msg||!selPhone)return;
+    btn.disabled=true;inp.disabled=true;
+    try{
+      var r=await fetch('${B}/dashboard/api/send-reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:selPhone,message:msg})});
+      var d=await r.json();
+      if(d.ok){
+        var b=document.createElement('div');b.className='bubble bubble-assistant';b.innerHTML='<span style="font-size:.65rem;color:rgba(255,255,255,.6);margin-right:4px">👤</span>'+msg.replace(/</g,'&lt;')+'<span class="t">ahora</span>';
+        m.appendChild(b);m.scrollTop=m.scrollHeight;inp.value='';
+      }else{alert('No se pudo enviar')}
+    }catch(e){alert('Error al enviar')}
+    btn.disabled=false;inp.disabled=false;inp.focus();
+  }
+  btn.onclick=sendReply;
+  inp.onkeydown=function(e){if(e.key==='Enter')sendReply()};
+}
 async function toggleAi(phone,enabled){
   try{
     await fetch('${B}/dashboard/api/toggle-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,enabled})});
