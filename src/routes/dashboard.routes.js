@@ -171,7 +171,8 @@ router.get('/dashboard', async (req, res) => {
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
   <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
 </div>
-<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-wrap">${actBars}</div></div>`;
+<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-wrap">${actBars}</div></div>
+<script>setTimeout(()=>location.reload(),60000)</script>`;
   const badges = {};
   if (derivs24h > 0) badges.derivaciones = derivs24h;
   if (pendientes > 0) badges.agenda = pendientes;
@@ -473,6 +474,25 @@ async function toggleAi(phone,enabled){
     location.reload();
   }catch(e){alert('Error al cambiar modo')}
 }
+// Notification sound for new messages
+(function(){
+  var lastCount=document.querySelectorAll('.conv-item').length;
+  var audio=null;
+  function beep(){
+    if(!audio){var A=window.AudioContext||window.webkitAudioContext;if(!A)return;var ctx=new A();audio=ctx;};
+    var ctx=audio;var o=ctx.createOscillator();var g=ctx.createGain();o.connect(g);g.connect(ctx.destination);
+    o.type='sine';o.frequency.value=880;g.gain.value=0.15;o.start();g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.3);o.stop(ctx.currentTime+0.3);
+  }
+  setInterval(async function(){
+    try{
+      var r=await fetch('${B}/dashboard/api/stats');var d=await r.json();
+      if(d.conversations>lastCount){beep();lastCount=d.conversations;
+        document.title='💬 Nuevo mensaje — ${escapeHtml(business.nombre)}';
+        setTimeout(function(){document.title='${escapeHtml(business.nombre)} - Panel'},4000);
+      }
+    }catch(e){}
+  },15000);
+})();
 </script>`;
   const badges = await getNavBadges();
   res.send(renderPage({ active: 'mensajes', agentOnline: online, content, wide: true, badges }));
