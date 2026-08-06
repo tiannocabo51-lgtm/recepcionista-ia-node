@@ -134,7 +134,10 @@
   .ev.short{padding:3px 8px;justify-content:center}
   .ev.short .sv,.ev.short .pr,.ev.short .te{display:none}
   .ev.short .r1{gap:6px}
-  .ev.cancel{opacity:.5;text-decoration:line-through}
+  .ev.cancel{background:rgba(248,113,113,.15)!important;border-left-color:var(--bad)!important;color:var(--bad)!important}
+  .ev.cancel .nm{text-decoration:line-through;color:var(--bad)!important;opacity:.8}
+  .ev.cancel .tm,.ev.cancel .te,.ev.cancel .sv,.ev.cancel .pr{color:var(--bad)!important;opacity:.6}
+  .ev.cancel .stx{opacity:1}
   .rz{position:absolute;left:0;right:0;bottom:0;height:7px;cursor:ns-resize;z-index:9}
   .rz::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:2px;width:24px;height:2.5px;border-radius:2px;background:currentColor;opacity:0;transition:.14s}
   .ev:hover .rz::after{opacity:.55}
@@ -151,6 +154,9 @@
   .mcell.out .dn{color:#3b4460}
   .mcell.today .dn{background:var(--acc);color:#fff;font-weight:700}
   .mev{font-size:10.5px;padding:2px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2.5px solid;font-weight:550}
+  .mev.cancel{text-decoration:line-through;opacity:.6;background:rgba(248,113,113,.12)!important;border-left-color:var(--bad)!important;color:var(--bad)!important}
+  .arow.cancel .nm{text-decoration:line-through;color:var(--bad)}
+  .arow.cancel .tm{color:var(--bad);opacity:.6}
   .mmore{font-size:10px;color:var(--mut);padding-left:5px}
   .alist{flex:1;overflow-y:auto;padding:6px 0}
   .aday{padding:12px 18px 6px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.07em;position:sticky;top:0;background:var(--card);z-index:5;border-bottom:1px solid var(--line)}
@@ -546,7 +552,7 @@ function renderMonth(){
     var evs=visible().filter(e=>e.date===s).sort((a,b)=>a.from-b.from),blks=BLOCKS.filter(b=>b.date===s);
     h+='<div class="mcell'+(out?' out':'')+(s===TD?' today':'')+'" data-d="'+s+'"><div class="dn">'+d.getDate()+'</div>'+
       blks.map(b=>'<div class="mblk">🔒 '+esc(b.reason)+'</div>').join('')+
-      evs.slice(0,3).map(e=>'<div class="mev" data-e="'+e.id+'" style="background:'+e.color+'1e;border-left-color:'+e.color+';color:'+e.color+'">'+hhmm(e.from)+' '+esc(e.name)+'</div>').join('')+
+      evs.slice(0,3).map(e=>'<div class="mev'+(e.st==='cancelado'?' cancel':'')+'" data-e="'+e.id+'" style="background:'+e.color+'1e;border-left-color:'+e.color+';color:'+e.color+'">'+hhmm(e.from)+' '+esc(e.name)+'</div>').join('')+
       (evs.length>3?'<div class="mmore">+'+String(evs.length-3)+' más</div>':'')+'</div>'}
   $('mgrid').innerHTML=h;
   $('mgrid').querySelectorAll('.mcell').forEach(c=>c.onclick=ev=>{var t=ev.target.closest('[data-e]');if(t){openDrawer(+t.dataset.e);return}cur=parse(c.dataset.d);view='day';syncViews();render()});
@@ -557,7 +563,7 @@ function renderAgenda(){
   var h='',last='';
   list.forEach(e=>{if(e.date!==last){last=e.date;var d=parse(e.date);h+='<div class="aday">'+DOW[d.getDay()]+' '+d.getDate()+' de '+MON[d.getMonth()]+(e.date===TD?' <span>· hoy</span>':'')+'</div>'}
     var s=ST[e.st]||ST.pendiente;
-    h+='<div class="arow" data-e="'+e.id+'"><div class="tm">'+hhmm(e.from)+' – '+hhmm(e.from+e.dur)+'</div><div class="bar" style="background:'+e.color+'"></div><div style="flex:1;min-width:0"><div class="nm">'+esc(e.name)+'</div><div class="sv">'+esc(e.srv)+' · '+pro(e.pro).name+'</div></div><div class="rt"><span class="pill" style="background:'+s.c+'1f;color:'+s.c+'">'+s.i+' '+s.l+'</span></div></div>'});
+    h+='<div class="arow'+(e.st==='cancelado'?' cancel':'')+'" data-e="'+e.id+'"><div class="tm">'+hhmm(e.from)+' – '+hhmm(e.from+e.dur)+'</div><div class="bar" style="background:'+(e.st==='cancelado'?'var(--bad)':e.color)+'"></div><div style="flex:1;min-width:0"><div class="nm">'+esc(e.name)+'</div><div class="sv">'+esc(e.srv)+' · '+pro(e.pro).name+'</div></div><div class="rt"><span class="pill" style="background:'+s.c+'1f;color:'+s.c+'">'+s.i+' '+s.l+'</span></div></div>'});
   $('alist').innerHTML=h;
   $('alist').querySelectorAll('[data-e]').forEach(el=>el.onclick=function(){openDrawer(+el.dataset.e)});
 }
