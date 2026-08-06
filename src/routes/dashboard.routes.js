@@ -363,13 +363,49 @@ router.get('/dashboard/leads', async (req, res) => {
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true }));
 });
 
+// ── API: Contactos bloqueados ──────────────────────────────────────────
+router.post('/dashboard/api/block-contact', express.json(), async (req, res) => {
+  const { phone } = req.body;
+  if (!phone || !/^\d{8,15}$/.test(phone.trim())) {
+    return res.status(400).json({ error: 'Número inválido (solo dígitos, 8-15 chars)' });
+  }
+  const clean = phone.trim();
+  if (!business.contactosBloqueados) business.contactosBloqueados = [];
+  if (!business.contactosBloqueados.includes(clean)) {
+    business.contactosBloqueados.push(clean);
+  }
+  res.json({ ok: true, bloqueados: business.contactosBloqueados });
+});
+
+router.post('/dashboard/api/unblock-contact', express.json(), async (req, res) => {
+  const { phone } = req.body;
+  if (!business.contactosBloqueados) return res.json({ ok: true, bloqueados: [] });
+  business.contactosBloqueados = business.contactosBloqueados.filter((p) => p !== phone);
+  res.json({ ok: true, bloqueados: business.contactosBloqueados });
+});
+
 router.get('/dashboard/ajustes', async (req, res) => {
   const online = await agentOnline();
   const horarios = business.horarios
     .map((h) => `${escapeHtml(h.dia)}: ${escapeHtml(h.horario)}`)
     .join('<br>');
-  const content = `<h1>Ajustes</h1>
-<p class="sub">Configuración actual del agente. Por ahora se edita en el servidor; edición desde acá viene más adelante.</p>
+  const bloqueados = (business.contactosBloqueados || [])
+    .map((p) => `<div class="block-item"><span>${escapeHtml(p)}</span><button class="btn btn-sm btn-danger" onclick="unblock('${escapeHtml(p)}')">Quitar</button></div>`)
+    .join('') || '<p class="empty">No hay contactos bloqueados.</p>';
+
+  const content = `<style>
+.block-section{margin-top:28px;padding:20px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.block-section h3{margin-bottom:12px;font-size:.95rem}
+.block-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.block-item{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--card2);border:1px solid var(--line);border-radius:10px;font-size:.88rem}
+.block-add{display:flex;gap:8px}
+.block-add input{flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card2);color:var(--txt);font-size:.88rem}
+.btn-sm{padding:4px 12px;font-size:.78rem}
+.btn-danger{background:rgba(248,113,113,.2);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.btn-danger:hover{background:rgba(248,113,113,.35)}
+</style>
+<h1>Ajustes</h1>
+<p class="sub">Configuración actual del agente.</p>
 <dl class="kv">
   <dt>Negocio</dt><dd>${escapeHtml(business.nombre)}</dd>
   <dt>Recepcionista virtual</dt><dd>${escapeHtml(business.nombreRecepcionista)}</dd>
@@ -379,7 +415,32 @@ router.get('/dashboard/ajustes', async (req, res) => {
   <dt>Horarios</dt><dd>${horarios}</dd>
   <dt>Servicios cargados</dt><dd>${business.servicios.length}</dd>
   <dt>Usuario del panel</dt><dd>${escapeHtml(config.dashboardUser)}</dd>
-</dl>`;
+</dl>
+<div class="block-section">
+  <h3>🚫 Contactos bloqueados (la IA no les responde)</h3>
+  <div class="block-list">${bloqueados}</div>
+  <div class="block-add">
+    <input id="blockPhone" placeholder="Número con código país, ej: 5492235551234">
+    <button class="btn" onclick="blockContact()">Agregar</button>
+  </div>
+</div>
+<script>
+async function blockContact(){
+  const phone=document.getElementById('blockPhone').value.trim();
+  if(!phone)return;
+  try{
+    await fetch('/dashboard/api/block-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+    location.reload();
+  }catch(e){alert('Error al bloquear')}
+}
+async function unblock(phone){
+  if(!confirm('Desbloquear '+phone+'?'))return;
+  try{
+    await fetch('/dashboard/api/unblock-contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+    location.reload();
+  }catch(e){alert('Error al desbloquear')}
+}
+</script>`;
   res.send(renderPage({ active: 'ajustes', agentOnline: online, content }));
 });
 
