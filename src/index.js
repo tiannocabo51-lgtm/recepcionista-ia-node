@@ -42,6 +42,7 @@ app.use((err, req, res, next) => {
 
 const followUpService = require('./services/followUpService');
 const connectionMonitor = require('./services/connectionMonitor');
+const reminderService = require('./services/reminderService');
 const blockedContacts = require('./db/blockedContacts.repository');
 const { runMigrations } = require('./db/migrate');
 
@@ -52,6 +53,7 @@ const server = app.listen(config.port, () => {
   runMigrations();
   followUpService.start();
   connectionMonitor.start();
+  reminderService.start();
   blockedContacts.loadCache();
 });
 

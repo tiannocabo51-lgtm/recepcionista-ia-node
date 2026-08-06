@@ -39,6 +39,7 @@ router.post('/dashboard/api/send-reply', express.json(), async (req, res) => {
         'INSERT INTO conversations (phone, role, content) VALUES ($1, $2, $3)',
         [phone, 'assistant', `[HUMANO] ${message.trim()}`]
       );
+      logActivity('message_sent', message.trim().slice(0, 80), phone);
     }
     res.json({ ok: sent });
   } catch (e) {
@@ -84,12 +85,45 @@ router.delete('/dashboard/api/notes/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Lead tags
+router.get('/dashboard/api/tags', async (req, res) => {
+  const phone = req.query.phone;
+  if (!phone) return res.json([]);
+  const pool = require('../db/pool');
+  const r = await pool.query('SELECT id, tag FROM lead_tags WHERE phone=$1 ORDER BY created_at', [phone]);
+  res.json(r.rows);
+});
+router.post('/dashboard/api/tags', express.json(), async (req, res) => {
+  const { phone, tag } = req.body;
+  if (!phone || !tag) return res.status(400).json({ error: 'phone and tag required' });
+  const pool = require('../db/pool');
+  try {
+    await pool.query('INSERT INTO lead_tags (phone, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING', [phone, tag.trim().slice(0, 50)]);
+    logActivity('tag_added', `Tag "${tag.trim()}" agregado`, phone);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.delete('/dashboard/api/tags/:id', async (req, res) => {
+  const pool = require('../db/pool');
+  await pool.query('DELETE FROM lead_tags WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Activity log
+async function logActivity(action, detail, phone) {
+  try {
+    const pool = require('../db/pool');
+    await pool.query('INSERT INTO activity_log (action, detail, phone) VALUES ($1, $2, $3)', [action, detail || null, phone || null]);
+  } catch (e) { /* non-critical */ }
+}
+
 router.post('/dashboard/api/lead-status', express.json(), async (req, res) => {
   const { phone, estado } = req.body;
   const valid = ['nuevo','consultando','turno','cliente','frio'];
   if (!phone || !valid.includes(estado)) return res.status(400).json({ error: 'phone and valid estado required' });
   try {
     await leadsRepo.updateEstado(phone, estado);
+    logActivity('lead_status', `Estado cambiado a "${estado}"`, phone);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -435,8 +469,14 @@ router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
       await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [b.status, b.id]);
       const appt = old.rows[0];
       if (appt && business.whatsappHumano) {
-        if (b.status === 'cancelado') notifyOwner(`❌ Turno cancelado desde el panel:\n${appt.name} — ${appt.service}\n${appt.appointment_date} a las ${appt.appointment_time?.slice(0,5)}`);
-        if (b.status === 'finalizado') notifyOwner(`✅ Turno completado:\n${appt.name} — ${appt.service}`);
+        if (b.status === 'cancelado') {
+          logActivity('turno_cancelled', `${appt.name} — ${appt.service}`, appt.phone);
+          notifyOwner(`❌ Turno cancelado desde el panel:\n${appt.name} — ${appt.service}\n${appt.appointment_date} a las ${appt.appointment_time?.slice(0,5)}`);
+        }
+        if (b.status === 'finalizado') {
+          logActivity('turno_completed', `${appt.name} — ${appt.service}`, appt.phone);
+          notifyOwner(`✅ Turno completado:\n${appt.name} — ${appt.service}`);
+        }
       }
       return res.json({ ok: true });
     }
@@ -461,7 +501,10 @@ router.post('/dashboard/api/appointment', express.json(), async (req, res) => {
       professional: b.pro || b.professional || 1,
       notes: b.notes || '',
     });
-    if (!b.id && business.whatsappHumano) notifyOwner(`📅 Nuevo turno desde el panel:\n${b.name} — ${b.srv || b.service}\n${b.date} a las ${timeStr}`);
+    if (!b.id) {
+      logActivity('turno_created', `${b.name} — ${b.srv || b.service} el ${b.date} a las ${timeStr}`, b.phone);
+      if (business.whatsappHumano) notifyOwner(`📅 Nuevo turno desde el panel:\n${b.name} — ${b.srv || b.service}\n${b.date} a las ${timeStr}`);
+    }
     res.json(saved);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -791,11 +834,16 @@ const ESTADO_INFO = {
 router.get('/dashboard/leads', async (req, res) => {
   const filtro = typeof req.query.estado === 'string' ? req.query.estado : null;
   const vista = req.query.vista === 'tablero' ? 'tablero' : 'lista';
-  const [online, counts, leads] = await Promise.all([
+  const [online, counts, leads, allTags] = await Promise.all([
     agentOnline(),
     leadsRepo.countByEstado(),
     leadsRepo.listLeads(vista === 'tablero' ? null : filtro),
+    require('../db/pool').query('SELECT phone, tag FROM lead_tags ORDER BY created_at'),
   ]);
+
+  // Build phone→tags map
+  const tagMap = {};
+  allTags.rows.forEach(t => { if (!tagMap[t.phone]) tagMap[t.phone] = []; tagMap[t.phone].push(t.tag); });
 
   const cards = Object.entries(ESTADO_INFO)
     .map(([est, info]) => {
@@ -823,7 +871,9 @@ router.get('/dashboard/leads', async (req, res) => {
           + '<div class="lead-av">' + escapeHtml(inicial) + '</div>'
           + '<div class="lead-main"><div class="lead-name">' + escapeHtml(l.nombre || 'Sin nombre') + '</div>'
           + '<div class="lead-phone">' + escapeHtml(l.phone) + '</div></div>'
-          + '<div class="lead-tags"><select class="lead-status-sel" data-phone="' + escapeHtml(l.phone) + '">' + statusOpts + '</select>' + chipsFor(l.interes) + '</div>'
+          + '<div class="lead-tags"><select class="lead-status-sel" data-phone="' + escapeHtml(l.phone) + '">' + statusOpts + '</select>' + chipsFor(l.interes)
+          + (tagMap[l.phone] ? tagMap[l.phone].map(t => '<span class="lead-chip lc-custom">' + escapeHtml(t) + '</span>').join('') : '')
+          + '<button class="tag-add-btn" data-phone="' + escapeHtml(l.phone) + '" title="Agregar etiqueta">+🏷️</button></div>'
           + '<div class="lead-when">' + timeAgo(l.ultimo_contacto) + '</div>'
           + '<a class="btn lead-btn" href="' + B + '/dashboard/mensajes?phone=' + encodeURIComponent(l.phone) + '">Ver chat</a>'
           + '</div>';
@@ -893,6 +943,9 @@ router.get('/dashboard/leads', async (req, res) => {
     + '.kan-empty{color:var(--mut);text-align:center;padding:16px;font-size:.8rem}'
     + '.lead-status-sel{padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:.76rem;cursor:pointer;outline:none}'
     + '.lead-status-sel:focus{border-color:var(--acc2)}'
+    + '.lc-custom{background:rgba(99,102,241,.15);color:var(--acc2);border-color:var(--acc2)}'
+    + '.tag-add-btn{border:1px dashed var(--line);background:none;color:var(--mut);font-size:.7rem;padding:2px 8px;border-radius:999px;cursor:pointer;transition:all .16s}'
+    + '.tag-add-btn:hover{border-color:var(--acc2);color:var(--acc2)}'
     + '@media(max-width:900px){.kanban{grid-template-columns:repeat(5,minmax(160px,1fr));overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px}.kan-col{min-height:auto;min-width:160px}}'
     + '@media(max-width:640px){.lead-row{flex-wrap:wrap}}'
     + '</style>'
@@ -902,7 +955,8 @@ router.get('/dashboard/leads', async (req, res) => {
     + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"><a class="btn" href="' + B + '/dashboard/api/leads/export" title="Exportar CSV">📥 CSV</a></div>' : '')
     + cuerpo
     + `<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}
-document.querySelectorAll('.lead-status-sel').forEach(function(sel){sel.onchange=async function(){var ph=this.dataset.phone,est=this.value;try{var r=await fetch('${B}/dashboard/api/lead-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ph,estado:est})});if(r.ok)location.reload();else alert('Error')}catch(e){alert('Error al cambiar estado')}}});</script>`;
+document.querySelectorAll('.lead-status-sel').forEach(function(sel){sel.onchange=async function(){var ph=this.dataset.phone,est=this.value;try{var r=await fetch('${B}/dashboard/api/lead-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ph,estado:est})});if(r.ok)location.reload();else alert('Error')}catch(e){alert('Error al cambiar estado')}}});
+document.querySelectorAll('.tag-add-btn').forEach(function(btn){btn.onclick=async function(){var tag=prompt('Etiqueta (ej: VIP, promo, primera vez):');if(!tag||!tag.trim())return;try{var r=await fetch('${B}/dashboard/api/tags',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:this.dataset.phone,tag:tag.trim()})});if(r.ok)location.reload();else alert('Error')}catch(e){alert('Error al agregar etiqueta')}}});</script>`;
   const badges = await getNavBadges();
   res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true, badges }));
 });
@@ -950,7 +1004,7 @@ router.get('/dashboard/estadisticas', async (req, res) => {
   const pool = require('../db/pool');
 
   // Get stats for the current month and last month
-  const [monthlyAppts, monthlyConvs, monthlyLeads, topServices] = await Promise.all([
+  const [monthlyAppts, prevMonthAppts, monthlyConvs, monthlyLeads, topServices] = await Promise.all([
     pool.query(`
       SELECT
         COUNT(*)::int AS total,
@@ -960,6 +1014,16 @@ router.get('/dashboard/estadisticas', async (req, res) => {
         COALESCE(SUM(price) FILTER (WHERE status IN ('confirmado','curso','finalizado')), 0)::numeric AS ingresos
       FROM appointments
       WHERE appointment_date >= date_trunc('month', CURRENT_DATE)
+    `),
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status IN ('confirmado','curso','finalizado'))::int AS atendidos,
+        COUNT(*) FILTER (WHERE status = 'cancelado')::int AS cancelados,
+        COALESCE(SUM(price) FILTER (WHERE status IN ('confirmado','curso','finalizado')), 0)::numeric AS ingresos
+      FROM appointments
+      WHERE appointment_date >= date_trunc('month', CURRENT_DATE) - interval '1 month'
+        AND appointment_date < date_trunc('month', CURRENT_DATE)
     `),
     pool.query(`
       SELECT COUNT(*)::int AS total,
@@ -981,8 +1045,16 @@ router.get('/dashboard/estadisticas', async (req, res) => {
   ]);
 
   const ma = monthlyAppts.rows[0];
+  const prev = prevMonthAppts.rows[0];
   const mc = monthlyConvs.rows[0];
   const mesLabel = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', month: 'long', year: 'numeric' });
+
+  function cmp(curr, old) {
+    if (!old || old === 0) return curr > 0 ? '<span class="cmp cmp-up">↑ nuevo</span>' : '';
+    const pct = Math.round(((curr - old) / old) * 100);
+    if (pct === 0) return '<span class="cmp">=</span>';
+    return pct > 0 ? `<span class="cmp cmp-up">↑ ${pct}%</span>` : `<span class="cmp cmp-down">↓ ${Math.abs(pct)}%</span>`;
+  }
 
   // Top services mini-chart
   const maxSvc = Math.max(...topServices.rows.map(s => s.n), 1);
@@ -1011,6 +1083,9 @@ router.get('/dashboard/estadisticas', async (req, res) => {
 .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center}
 .stat-card .sc-v{font-size:2rem;font-weight:700;letter-spacing:-.03em}
 .stat-card .sc-l{font-size:.75rem;color:var(--mut);margin-top:4px}
+.cmp{display:inline-block;font-size:.68rem;font-weight:600;margin-top:4px;padding:1px 7px;border-radius:999px;background:var(--card2);color:var(--mut)}
+.cmp-up{background:rgba(52,211,153,.15);color:var(--ok)}
+.cmp-down{background:rgba(248,113,113,.15);color:var(--bad)}
 .stat-card.sc-green .sc-v{color:var(--ok)}.stat-card.sc-red .sc-v{color:var(--bad)}.stat-card.sc-blue .sc-v{color:#38bdf8}.stat-card.sc-purple .sc-v{color:var(--acc2)}
 .stat-panels{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .stat-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
@@ -1032,12 +1107,12 @@ router.get('/dashboard/estadisticas', async (req, res) => {
 <h1>Estadísticas</h1>
 <p class="sub" style="text-transform:capitalize">${mesLabel}</p>
 <div class="stat-grid">
-  <div class="stat-card sc-blue"><div class="sc-v">${ma.total}</div><div class="sc-l">Turnos del mes</div></div>
-  <div class="stat-card sc-green"><div class="sc-v">${ma.atendidos}</div><div class="sc-l">Atendidos</div></div>
-  <div class="stat-card sc-green"><div class="sc-v">$${Number(ma.ingresos).toLocaleString('es-AR')}</div><div class="sc-l">Ingresos del mes</div></div>
+  <div class="stat-card sc-blue"><div class="sc-v">${ma.total}</div><div class="sc-l">Turnos del mes</div>${cmp(ma.total, prev.total)}</div>
+  <div class="stat-card sc-green"><div class="sc-v">${ma.atendidos}</div><div class="sc-l">Atendidos</div>${cmp(ma.atendidos, prev.atendidos)}</div>
+  <div class="stat-card sc-green"><div class="sc-v">$${Number(ma.ingresos).toLocaleString('es-AR')}</div><div class="sc-l">Ingresos del mes</div>${cmp(Number(ma.ingresos), Number(prev.ingresos))}</div>
   <div class="stat-card sc-purple"><div class="sc-v">${mc.clientes_unicos}</div><div class="sc-l">Clientes únicos</div></div>
   <div class="stat-card"><div class="sc-v">${mc.total}</div><div class="sc-l">Mensajes del mes</div></div>
-  <div class="stat-card sc-red"><div class="sc-v">${tasaCancel}%</div><div class="sc-l">Tasa cancelación</div></div>
+  <div class="stat-card sc-red"><div class="sc-v">${tasaCancel}%</div><div class="sc-l">Tasa cancelación</div>${cmp(ma.cancelados, prev.cancelados)}</div>
   <div class="stat-card sc-purple"><div class="sc-v">${tasaNoShow}%</div><div class="sc-l">Tasa no-show</div></div>
 </div>
 <div class="stat-panels">
@@ -1068,6 +1143,8 @@ router.post('/dashboard/api/unblock-contact', express.json(), async (req, res) =
 
 router.get('/dashboard/ajustes', async (req, res) => {
   const online = await agentOnline();
+  const pool = require('../db/pool');
+  const actLog = await pool.query('SELECT action, detail, phone, created_at FROM activity_log ORDER BY created_at DESC LIMIT 30');
   const horarios = business.horarios
     .map((h) => `${escapeHtml(h.dia)}: ${escapeHtml(h.horario)}`)
     .join('<br>');
@@ -1120,6 +1197,12 @@ router.get('/dashboard/ajustes', async (req, res) => {
 .sys-info{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .sys-badge{padding:8px 14px;background:var(--card2);border-radius:8px;font-size:.78rem;display:flex;justify-content:space-between}
 .sys-badge .sys-v{color:var(--ok);font-weight:600}
+.act-log-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.82rem}
+.act-log-row:last-child{border-bottom:none}
+.act-log-ico{font-size:1rem;flex-shrink:0}
+.act-log-detail{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-log-phone{font-size:.72rem;color:var(--mut);flex-shrink:0}
+.act-log-ts{font-size:.7rem;color:var(--mut);flex-shrink:0;white-space:nowrap}
 @media(max-width:640px){.sys-info{grid-template-columns:1fr}.svc-row{flex-wrap:wrap;gap:4px}}
 </style>
 <h1>Ajustes</h1>
@@ -1151,6 +1234,15 @@ router.get('/dashboard/ajustes', async (req, res) => {
     <input id="blockPhone" placeholder="Número con código país, ej: 5492235551234">
     <button class="btn" onclick="blockContact()">Agregar</button>
   </div>
+</div>
+<div class="block-section">
+  <h3>📋 Actividad reciente del panel</h3>
+  ${actLog.rows.length ? actLog.rows.map(a => {
+    const icons = { turno_created: '📅', turno_cancelled: '❌', turno_completed: '✅', lead_status: '🔄', tag_added: '🏷️', message_sent: '💬' };
+    const d = new Date(a.created_at);
+    const ts = d.toLocaleDateString('es-AR', { day:'2-digit', month:'short' }) + ' ' + d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+    return `<div class="act-log-row"><span class="act-log-ico">${icons[a.action] || '⚡'}</span><span class="act-log-detail">${escapeHtml(a.detail || a.action)}</span>${a.phone ? '<span class="act-log-phone">' + escapeHtml(a.phone) + '</span>' : ''}<span class="act-log-ts">${ts}</span></div>`;
+  }).join('') : '<p class="empty">Sin actividad registrada aún.</p>'}
 </div>
 <script>
 async function blockContact(){

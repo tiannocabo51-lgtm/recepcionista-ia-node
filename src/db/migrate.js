@@ -37,6 +37,23 @@ const MIGRATIONS = [
      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS idx_client_notes_phone ON client_notes(phone)`,
+  // Lead custom tags
+  `CREATE TABLE IF NOT EXISTS lead_tags (
+     id         SERIAL PRIMARY KEY,
+     phone      VARCHAR(30) NOT NULL,
+     tag        VARCHAR(50) NOT NULL,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     UNIQUE(phone, tag)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_lead_tags_phone ON lead_tags(phone)`,
+  // Activity log
+  `CREATE TABLE IF NOT EXISTS activity_log (
+     id         SERIAL PRIMARY KEY,
+     action     VARCHAR(60) NOT NULL,
+     detail     TEXT,
+     phone      VARCHAR(30),
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
 ];
 
 async function runMigrations() {
