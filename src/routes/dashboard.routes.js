@@ -117,13 +117,54 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // ── Agenda interactiva (agendaView.html) ──────────────────────────────
-router.get('/dashboard/agenda', (req, res) => {
-  // Inject BASE_PATH so the JS inside agendaView.html can build API URLs
-  const html = agendaView().replace(
+router.get('/dashboard/agenda', async (req, res) => {
+  const online = await agentOnline();
+  const statusDot = online === true ? '<span class="dot dot-on"></span>' : online === false ? '<span class="dot dot-off"></span>' : '<span class="dot dot-unk"></span>';
+  // Inject BASE_PATH and wrap in HTML shell with nav
+  const body = agendaView().replace(
     '<script>',
     `<script>window.__BASE_PATH__=${JSON.stringify(B)};`,
-    // only replace the first occurrence
   );
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(business.nombre)} - Agenda</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0b0f1a;--card:#121828;--card2:#171f33;--line:#232d47;--txt:#e6eaf2;--mut:#8b96ad;--acc:#6366f1;--acc2:#818cf8;--ok:#34d399;--warn:#fbbf24;--bad:#f87171}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+.dash-nav{position:sticky;top:0;z-index:80;display:flex;align-items:center;gap:16px;padding:12px 22px;background:rgba(11,15,26,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.dash-brand{font-weight:700;font-size:1rem;letter-spacing:-.02em;white-space:nowrap}
+.dash-status{font-size:.72rem;color:var(--mut);display:flex;align-items:center;gap:5px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot-on{background:var(--ok);box-shadow:0 0 8px var(--ok)}.dot-off{background:var(--bad);box-shadow:0 0 8px var(--bad)}.dot-unk{background:var(--mut)}
+.dash-links{margin-left:auto;display:flex;gap:3px;flex-wrap:wrap}
+.dash-links a{color:var(--mut);text-decoration:none;font-size:.82rem;padding:6px 12px;border-radius:8px;transition:.16s;white-space:nowrap}
+.dash-links a:hover{color:var(--txt);background:var(--card2)}
+.dash-links a.active{color:#fff;background:var(--acc)}
+#menu-toggle,.hamburger{display:none}
+@media(max-width:760px){
+  .dash-nav{padding:10px 14px;flex-wrap:wrap;gap:8px}
+  .hamburger{display:block;margin-left:auto;font-size:1.3rem;cursor:pointer;color:var(--txt)}
+  .dash-links{display:none;width:100%;flex-direction:column;margin:4px 0 0}
+  #menu-toggle:checked ~ .dash-links{display:flex}
+  .dash-links a{padding:10px 14px;font-size:.9rem}
+}
+</style>
+</head><body>
+<nav class="dash-nav">
+  <div><div class="dash-brand">${escapeHtml(business.nombre)}</div><div class="dash-status">${statusDot} ${online === true ? 'En línea' : online === false ? 'Desconectado' : 'Estado desconocido'}</div></div>
+  <input type="checkbox" id="menu-toggle"><label for="menu-toggle" class="hamburger">☰</label>
+  <div class="dash-links">
+    <a href="${B}/dashboard">Inicio</a>
+    <a href="${B}/dashboard/agenda" class="active">Agenda</a>
+    <a href="${B}/dashboard/mensajes">Mensajes</a>
+    <a href="${B}/dashboard/leads">Leads</a>
+    <a href="${B}/dashboard/derivaciones">Derivaciones</a>
+    <a href="${B}/dashboard/ajustes">Ajustes</a>
+  </div>
+</nav>
+${body}
+</body></html>`;
   res.send(html);
 });
 

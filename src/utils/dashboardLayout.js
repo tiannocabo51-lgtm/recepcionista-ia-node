@@ -114,13 +114,27 @@ function renderPage({ active, agentOnline, content, wide }) {
     header { flex-wrap:wrap; padding:12px 16px; }
     .hamburger { display:block; margin-left:auto; font-size:1.4rem; cursor:pointer; color:var(--txt); }
     nav { display:none; width:100%; flex-direction:column; margin:8px 0 0; }
+    nav .nav-link { padding:12px 16px; font-size:.95rem; border-bottom:1px solid var(--line); }
     #menu-toggle:checked ~ nav { display:flex; }
-    main { padding:20px 14px 40px; }
+    main { padding:16px 12px 40px; }
+    h1 { font-size:1.25rem; }
+    .sub { font-size:.82rem; margin-bottom:20px; }
+    .cards { grid-template-columns:repeat(2,1fr); gap:10px; }
+    .card { padding:16px; }
+    .card .num { font-size:1.6rem; }
+    .card .lbl { font-size:.74rem; }
     .chat-wrap { grid-template-columns:1fr; height:auto; }
-    .conv-list { max-height:40vh; border-right:none; border-bottom:1px solid var(--line); }
-    .chat-msgs { max-height:50vh; }
+    .conv-list { max-height:35vh; border-right:none; border-bottom:1px solid var(--line); overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .chat-pane { height:55vh; display:flex; flex-direction:column; }
+    .chat-msgs { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:none; }
+    .chat-head { flex-wrap:wrap; gap:8px; }
+    .bubble { max-width:85%; font-size:.84rem; }
+    .hand-card { flex-direction:column; gap:10px; padding:14px; }
     .cal-cell { font-size:.6rem; }
-    .kv { grid-template-columns:1fr; }
+    .kv { grid-template-columns:1fr; gap:8px 0; padding:16px; }
+    .kv dt { font-weight:600; color:var(--acc2); }
+    .toolbar { gap:8px; }
+    .btn { font-size:.8rem; padding:7px 12px; }
   }
 
   /* Calendario v2 */
