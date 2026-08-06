@@ -129,11 +129,13 @@ function renderPage({ active, agentOnline, content, wide, badges = {} }) {
     .card .num { font-size:1.6rem; }
     .card .lbl { font-size:.74rem; }
     .chat-wrap { grid-template-columns:1fr; height:auto; }
-    .conv-list { max-height:35vh; border-right:none; border-bottom:1px solid var(--line); overflow-y:auto; -webkit-overflow-scrolling:touch; }
-    .chat-pane { height:55vh; display:flex; flex-direction:column; }
+    .conv-list { max-height:60vh; border-right:none; border-bottom:1px solid var(--line); overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .conv-item { padding:14px 12px; }
+    .avatar { width:38px; height:38px; font-size:.8rem; }
+    .chat-pane { display:flex; flex-direction:column; }
     .chat-msgs { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:none; }
-    .chat-head { flex-wrap:wrap; gap:8px; }
-    .bubble { max-width:85%; font-size:.84rem; }
+    .chat-head { flex-wrap:wrap; gap:6px; }
+    .bubble { max-width:88%; font-size:.84rem; padding:10px 14px; }
     .hand-card { flex-direction:column; gap:10px; padding:14px; }
     .cal-cell { font-size:.6rem; }
     .kv { grid-template-columns:1fr; gap:8px 0; padding:16px; }

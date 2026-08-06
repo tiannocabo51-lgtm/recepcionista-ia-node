@@ -137,8 +137,9 @@
   .rz{position:absolute;left:0;right:0;bottom:0;height:7px;cursor:ns-resize;z-index:9}
   .rz::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:2px;width:24px;height:2.5px;border-radius:2px;background:currentColor;opacity:0;transition:.14s}
   .ev:hover .rz::after{opacity:.55}
-  .now{position:absolute;left:0;right:0;height:2px;background:var(--bad);z-index:20;pointer-events:none;box-shadow:0 0 10px rgba(248,113,113,.6)}
-  .now::before{content:'';position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--bad)}
+  .now{position:absolute;left:0;right:0;height:1.5px;background:var(--acc2);z-index:20;pointer-events:none;opacity:.7}
+  .now::before{content:'';position:absolute;left:-4px;top:-3.5px;width:8px;height:8px;border-radius:50%;background:var(--acc2)}
+  .now::after{content:attr(data-t);position:absolute;left:12px;top:-8px;font-size:.58rem;color:var(--acc2);font-weight:600;white-space:nowrap}
   .mgrid{display:grid;grid-template-columns:repeat(7,1fr);flex:1;overflow-y:auto}
   .mcell{border-left:1px solid var(--line);border-bottom:1px solid var(--line);min-height:104px;padding:5px;transition:.14s;cursor:pointer;display:flex;flex-direction:column;gap:2px}
   .mcell:nth-child(7n+1){border-left:none}
@@ -469,7 +470,7 @@ function blkHTML(b){var h=b.dur/60*HOUR_PX;
   return '<div class="blk" data-b="'+b.id+'" title="Bloqueado: '+esc(b.reason)+'" style="top:'+((b.from-DAY_START*60)/60*HOUR_PX)+'px;height:'+(h-2)+'px"><div class="bt">'+hhmm(b.from)+' – '+hhmm(b.from+b.dur)+'</div><div class="bl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'+esc(b.reason)+'</div></div>'}
 function blocked(date,from,dur){return BLOCKS.some(b=>b.date===date&&from<b.from+b.dur&&b.from<from+dur)}
 function nowLine(){var n=new Date();if(n.getHours()<DAY_START||n.getHours()>=DAY_END)return'';
-  var top=((n.getHours()*60+n.getMinutes())-DAY_START*60)/60*HOUR_PX;return '<div class="now" style="top:'+top+'px"></div>'}
+  var top=((n.getHours()*60+n.getMinutes())-DAY_START*60)/60*HOUR_PX;var hh=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');return '<div class="now" data-t="'+hh+'" style="top:'+top+'px"></div>'}
 
 function render(){
   stats();miniCal();proList();upcoming();

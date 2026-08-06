@@ -153,16 +153,17 @@ router.get('/dashboard', async (req, res) => {
   const actBars = activity.map(a => {
     const pct = Math.round((a.n / maxAct) * 100);
     const dayName = new Date(a.day + 'T12:00:00').toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short' });
-    return `<div class="act-col"><div class="act-bar" style="height:${Math.max(pct, 4)}%"></div><div class="act-num">${a.n}</div><div class="act-day">${dayName}</div></div>`;
+    return `<div class="act-col"><div class="act-bar-area"><div class="act-bar" style="height:${Math.max(pct, 5)}%"></div></div><div class="act-num">${a.n}</div><div class="act-day">${dayName}</div></div>`;
   }).join('');
 
   const content = `${HOME_CSS}
 <style>
-.act-chart{display:flex;align-items:flex-end;gap:6px;height:80px;padding:12px 0}
-.act-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
-.act-bar{width:100%;max-width:28px;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:4px 4px 0 0;min-height:3px;transition:height .3s}
-.act-num{font-size:.68rem;font-weight:600;color:var(--txt)}
-.act-day{font-size:.62rem;color:var(--mut);text-transform:capitalize}
+.act-wrap{display:flex;gap:8px;align-items:flex-end;height:120px;padding:12px 0 0}
+.act-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.act-bar-area{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;min-height:0}
+.act-bar{width:100%;max-width:32px;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:6px 6px 0 0;min-height:4px}
+.act-num{font-size:.72rem;font-weight:700;color:var(--txt)}
+.act-day{font-size:.66rem;color:var(--mut);text-transform:capitalize}
 </style>
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
 <div class="st-cards">${stats}</div>
@@ -170,7 +171,7 @@ router.get('/dashboard', async (req, res) => {
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
   <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
 </div>
-<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-chart">${actBars}</div></div>`;
+<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-wrap">${actBars}</div></div>`;
   const badges = {};
   if (derivs24h > 0) badges.derivaciones = derivs24h;
   if (pendientes > 0) badges.agenda = pendientes;
@@ -408,6 +409,7 @@ router.get('/dashboard/mensajes', async (req, res) => {
   const chatHtml =
     sel && chat
       ? `<div class="chat-head">
+          <a class="chat-back" href="${B}/dashboard/mensajes">←</a>
           <div class="chat-head-info">
             <strong>${escapeHtml(selName)}</strong>
             ${selConv?.nombre ? '<span class="chat-head-phone">' + escapeHtml(sel) + '</span>' : ''}
@@ -440,10 +442,23 @@ router.get('/dashboard/mensajes', async (req, res) => {
 .ai-toggle input:checked+.ai-slider{background:var(--ok)}
 .ai-toggle input:checked+.ai-slider::after{transform:translateX(20px)}
 .ai-label{font-size:.78rem;font-weight:600;min-width:65px}
+.chat-back{display:none;color:var(--acc2);text-decoration:none;font-size:1.3rem;font-weight:700;padding:0 8px 0 0}
+@media(max-width:760px){
+  .chat-wrap.has-sel .conv-list{display:none}
+  .chat-wrap.has-sel .chat-pane{height:calc(100vh - 160px)}
+  .chat-back{display:block}
+  .chat-head{padding:10px 14px}
+  .chat-head-info strong{font-size:.88rem}
+  .ai-toggle{gap:4px}
+  .ai-slider{width:36px;height:18px}
+  .ai-slider::after{width:13px;height:13px;top:2.5px;left:2.5px}
+  .ai-toggle input:checked+.ai-slider::after{transform:translateX(17px)}
+  .ai-label{font-size:.7rem;min-width:auto}
+}
 </style>
 <h1>Mensajes</h1>
 <p class="sub">Conversaciones del agente con tus clientes.</p>
-<div class="chat-wrap">
+<div class="chat-wrap${sel ? ' has-sel' : ''}">
   <div class="conv-list">
     <div class="conv-search"><input placeholder="Buscar por nombre o número..." oninput="for(const e of document.querySelectorAll('.conv-item'))e.style.display=e.textContent.includes(this.value)?'':'none'"></div>
     ${items}
