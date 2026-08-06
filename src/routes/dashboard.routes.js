@@ -15,6 +15,16 @@ const router = express.Router();
 const B = config.basePath; // e.g. '/simaxface' or ''
 router.use('/dashboard', dashboardAuth);
 
+// Helper: get nav badges for all pages
+async function getNavBadges() {
+  try {
+    const d = await handoffsRepo.countRecent24h();
+    const badges = {};
+    if (d > 0) badges.derivaciones = d;
+    return badges;
+  } catch { return {}; }
+}
+
 router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
   const { phone, enabled } = req.body;
   if (!phone) return res.status(400).json({ error: 'phone required' });
@@ -88,13 +98,15 @@ const HOME_CSS = `<style>
 
 router.get('/dashboard', async (req, res) => {
   const t = today();
-  const [online, turnosHoyAll, nuevos, derivs, proximos, convs] = await Promise.all([
+  const [online, turnosHoyAll, nuevos, derivs, derivs24h, proximos, convs, activity] = await Promise.all([
     agentOnline(),
     appointmentsRepo.findRange(t, t),
     conversationsRepo.countNewClientsToday(),
     handoffsRepo.countToday(),
+    handoffsRepo.countRecent24h(),
     appointmentsRepo.findUpcoming(5),
     conversationsRepo.listConversations(),
+    conversationsRepo.activityLast7Days(),
   ]);
   const confirmados = turnosHoyAll.filter(a => ['confirmado','curso','finalizado'].includes(a.status)).length;
   const cancelados = turnosHoyAll.filter(a => ['cancelado','noasistio'].includes(a.status)).length;
@@ -106,11 +118,11 @@ router.get('/dashboard', async (req, res) => {
   const topProName = topPro ? (business.nombreRecepcionista || 'Profesional') : '—';
   const clientasNuevas = turnosHoyAll.filter(a => a.status !== 'cancelado').length; // approximate
   const stats = [
-    ['st-acc', 'Turnos hoy', turnosHoyAll.length, `${confirmados} confirmados`, `${B}/dashboard/agenda`],
+    ['st-acc', 'Turnos hoy', turnosHoyAll.length, `${pendientes} pendientes · ${confirmados} confirmados`, `${B}/dashboard/agenda`],
     ['st-ok', 'Confirmados', confirmados, 'listos para atender', `${B}/dashboard/agenda`],
     ['st-bad', 'Cancelados', cancelados, 'hoy', `${B}/dashboard/agenda`],
     ['st-info', 'Ingresos del día', '$' + ingresos.toLocaleString('es-AR'), 'estimado', `${B}/dashboard/agenda`],
-    ['st-pink', 'Más ocupada', topProName, topPro ? proCounts[topPro] + ' turnos' : 'sin turnos', `${B}/dashboard/agenda`],
+    ['st-warn', 'Derivaciones', derivs, 'hoy', `${B}/dashboard/derivaciones`],
   ]
     .map(
       ([cls, lbl, num, sub, href]) =>
@@ -134,15 +146,35 @@ router.get('/dashboard', async (req, res) => {
         )
         .join('')
     : '<p class="empty">Sin conversaciones aún.</p>';
-  const hoyLabel = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const hoyLabel = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long' });
+
+  // Activity mini-chart (last 7 days)
+  const maxAct = Math.max(...activity.map(a => a.n), 1);
+  const actBars = activity.map(a => {
+    const pct = Math.round((a.n / maxAct) * 100);
+    const dayName = new Date(a.day + 'T12:00:00').toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short' });
+    return `<div class="act-col"><div class="act-bar" style="height:${Math.max(pct, 4)}%"></div><div class="act-num">${a.n}</div><div class="act-day">${dayName}</div></div>`;
+  }).join('');
+
   const content = `${HOME_CSS}
+<style>
+.act-chart{display:flex;align-items:flex-end;gap:6px;height:80px;padding:12px 0}
+.act-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.act-bar{width:100%;max-width:28px;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:4px 4px 0 0;min-height:3px;transition:height .3s}
+.act-num{font-size:.68rem;font-weight:600;color:var(--txt)}
+.act-day{font-size:.62rem;color:var(--mut);text-transform:capitalize}
+</style>
 <div class="hero"><div><h1>Hola 👋</h1><p class="sub" style="margin-bottom:0">Así viene el día de ${escapeHtml(business.nombreRecepcionista)}.</p></div><div class="date">${hoyLabel}</div></div>
 <div class="st-cards">${stats}</div>
 <div class="cols">
   <div class="panel"><h3>Próximos turnos <a href="${B}/dashboard/agenda">Ver agenda →</a></h3>${turnosList}</div>
   <div class="panel"><h3>Conversaciones recientes <a href="${B}/dashboard/mensajes">Ver todas →</a></h3>${convsList}</div>
-</div>`;
-  res.send(renderPage({ active: 'inicio', agentOnline: online, content }));
+</div>
+<div class="panel" style="margin-top:16px"><h3>📊 Actividad últimos 7 días <span style="font-weight:400;font-size:.75rem;color:var(--mut)">(mensajes)</span></h3><div class="act-chart">${actBars}</div></div>`;
+  const badges = {};
+  if (derivs24h > 0) badges.derivaciones = derivs24h;
+  if (pendientes > 0) badges.agenda = pendientes;
+  res.send(renderPage({ active: 'inicio', agentOnline: online, content, badges }));
 });
 
 // ── Agenda interactiva (agendaView.html) ──────────────────────────────
@@ -426,7 +458,8 @@ async function toggleAi(phone,enabled){
   }catch(e){alert('Error al cambiar modo')}
 }
 </script>`;
-  res.send(renderPage({ active: 'mensajes', agentOnline: online, content, wide: true }));
+  const badges = await getNavBadges();
+  res.send(renderPage({ active: 'mensajes', agentOnline: online, content, wide: true, badges }));
 });
 
 router.get('/dashboard/derivaciones', async (req, res) => {
@@ -449,7 +482,8 @@ router.get('/dashboard/derivaciones', async (req, res) => {
   const content = `<h1>Derivaciones</h1>
 <p class="sub">Casos que el agente pasó a un humano.</p>
 ${cards}`;
-  res.send(renderPage({ active: 'derivaciones', agentOnline: online, content }));
+  const badges = await getNavBadges();
+  res.send(renderPage({ active: 'derivaciones', agentOnline: online, content, badges }));
 });
 
 const ESTADO_INFO = {
@@ -569,7 +603,8 @@ router.get('/dashboard/leads', async (req, res) => {
     + (vista === 'lista' ? '<div class="lead-search"><input id="leadSearch" placeholder="Buscar por nombre, teléfono o interés..." oninput="filterLeads(this.value)"></div>' : '')
     + cuerpo
     + '<script>function filterLeads(q){q=q.toLowerCase();document.querySelectorAll(".lead-row").forEach(r=>r.style.display=r.textContent.toLowerCase().includes(q)?"":"none")}</script>';
-  res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true }));
+  const badges = await getNavBadges();
+  res.send(renderPage({ active: 'leads', agentOnline: online, content, wide: true, badges }));
 });
 
 // ── API: Contactos bloqueados ──────────────────────────────────────────
@@ -693,7 +728,8 @@ async function unblock(phone){
   }catch(e){alert('Error al desbloquear')}
 }
 </script>`;
-  res.send(renderPage({ active: 'ajustes', agentOnline: online, content }));
+  const badges = await getNavBadges();
+  res.send(renderPage({ active: 'ajustes', agentOnline: online, content, badges }));
 });
 
 // ── API: System stats ───────────────────────────────────────────────────

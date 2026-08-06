@@ -43,7 +43,19 @@ async function runMigrations() {
       }
     }
   }
-  logger.info('Migraciones de agenda completadas');
+  logger.info('Migraciones completadas');
+
+  // Cleanup: remove conversations older than 90 days
+  try {
+    const result = await pool.query(
+      `DELETE FROM conversations WHERE created_at < now() - interval '90 days'`
+    );
+    if (result.rowCount > 0) {
+      logger.info(`[Cleanup] ${result.rowCount} mensajes antiguos eliminados (>90 días)`);
+    }
+  } catch (err) {
+    logger.error('[Cleanup] Error limpiando conversaciones:', err.message);
+  }
 }
 
 module.exports = { runMigrations };

@@ -75,6 +75,21 @@ async function countByPhone(phone) {
   return r.rows[0].n;
 }
 
+async function activityLast7Days() {
+  const result = await pool.query(
+    `SELECT d::date::text AS day, COALESCE(c.n, 0)::int AS n
+     FROM generate_series(CURRENT_DATE - interval '6 days', CURRENT_DATE, '1 day') d
+     LEFT JOIN (
+       SELECT created_at::date AS day, COUNT(*) AS n
+       FROM conversations
+       WHERE created_at >= CURRENT_DATE - interval '6 days'
+       GROUP BY created_at::date
+     ) c ON c.day = d::date
+     ORDER BY d`
+  );
+  return result.rows;
+}
+
 module.exports = {
   saveMessage,
   getRecentHistory,
@@ -83,4 +98,5 @@ module.exports = {
   countToday,
   countNewClientsToday,
   countByPhone,
+  activityLast7Days,
 };

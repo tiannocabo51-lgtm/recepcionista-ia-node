@@ -21,10 +21,12 @@ const NAV = [
   ['ajustes', 'Ajustes', B + '/dashboard/ajustes'],
 ];
 
-function renderPage({ active, agentOnline, content, wide }) {
+function renderPage({ active, agentOnline, content, wide, badges = {} }) {
   const navLinks = NAV.map(
-    ([id, label, href]) =>
-      `<a class="nav-link${active === id ? ' active' : ''}" href="${href}">${label}</a>`
+    ([id, label, href]) => {
+      const badge = badges[id] ? `<span class="nav-badge">${badges[id]}</span>` : '';
+      return `<a class="nav-link${active === id ? ' active' : ''}" href="${href}">${label}${badge}</a>`;
+    }
   ).join('');
 
   const status =
@@ -58,6 +60,7 @@ function renderPage({ active, agentOnline, content, wide }) {
   .nav-link { color:var(--mut); text-decoration:none; font-size:.88rem; padding:8px 14px; border-radius:8px; transition:all .18s; }
   .nav-link:hover { color:var(--txt); background:var(--card2); }
   .nav-link.active { color:#fff; background:var(--acc); }
+  .nav-badge { background:var(--bad); color:#fff; font-size:.6rem; font-weight:700; padding:1px 6px; border-radius:999px; margin-left:6px; min-width:16px; text-align:center; }
   #menu-toggle, .hamburger { display:none; }
   main { max-width:${wide ? '1400px' : '1100px'}; margin:0 auto; padding:36px 28px 60px; }
   h1 { font-size:1.5rem; letter-spacing:-.02em; margin-bottom:6px; }

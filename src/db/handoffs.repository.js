@@ -30,4 +30,11 @@ async function countToday() {
   return result.rows[0].n;
 }
 
-module.exports = { createHandoff, findRecent, countToday };
+async function countRecent24h() {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM handoffs WHERE created_at >= now() - interval '24 hours'`
+  );
+  return result.rows[0].n;
+}
+
+module.exports = { createHandoff, findRecent, countToday, countRecent24h };
