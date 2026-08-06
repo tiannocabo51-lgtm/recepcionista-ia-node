@@ -316,6 +316,7 @@
       <input id="q" placeholder="Buscar cliente…">
     </div>
     <button class="fbtn" id="fbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span class="hidem">Filtros</span></button>
+    <button class="fbtn hidem" id="csvb" title="Exportar turnos a CSV">📥 <span>CSV</span></button>
     <button class="primary" id="newb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="hidem">Nuevo turno</span></button>
   </div>
 
@@ -753,6 +754,11 @@ document.addEventListener('keydown',function(e){
   if(k){view=k;syncViews();render()}
   if(e.key==='n')openModal(null,iso(cur),9*60,null);
 });
+$('csvb').onclick=function(){
+  var s=startW(cur),from=iso(s),to=iso(addD(s,view==='month'?41:view==='day'?0:6));
+  window.open(API.replace('/api','')+'/../api/appointments/export?from='+from+'&to='+to,'_blank');
+  toast('📥 Descargando CSV…');
+};
 if(innerWidth<=720)view='agenda',syncViews();
 fillFilters();load();
 setInterval(function(){if(view!=='month'&&view!=='agenda')render()},60000);

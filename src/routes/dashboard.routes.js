@@ -63,6 +63,27 @@ router.get('/dashboard/api/search', async (req, res) => {
   }
 });
 
+// ── Client notes (CRM) ─────────────────────────────────────────────────
+router.get('/dashboard/api/notes', async (req, res) => {
+  const phone = req.query.phone;
+  if (!phone) return res.json([]);
+  const pool = require('../db/pool');
+  const r = await pool.query('SELECT id, note, created_at FROM client_notes WHERE phone=$1 ORDER BY created_at DESC LIMIT 20', [phone]);
+  res.json(r.rows);
+});
+router.post('/dashboard/api/notes', express.json(), async (req, res) => {
+  const { phone, note } = req.body;
+  if (!phone || !note) return res.status(400).json({ error: 'phone and note required' });
+  const pool = require('../db/pool');
+  await pool.query('INSERT INTO client_notes (phone, note) VALUES ($1, $2)', [phone, note.trim()]);
+  res.json({ ok: true });
+});
+router.delete('/dashboard/api/notes/:id', async (req, res) => {
+  const pool = require('../db/pool');
+  await pool.query('DELETE FROM client_notes WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
 router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
   const { phone, enabled } = req.body;
   if (!phone) return res.status(400).json({ error: 'phone required' });
@@ -136,7 +157,9 @@ const HOME_CSS = `<style>
 
 router.get('/dashboard', async (req, res) => {
   const t = today();
-  const [online, turnosHoyAll, nuevos, derivs, derivs24h, proximos, convs, activity] = await Promise.all([
+  const pool = require('../db/pool');
+  const mesActual = t.slice(0, 7); // YYYY-MM
+  const [online, turnosHoyAll, nuevos, derivs, derivs24h, proximos, convs, activity, mesIngresos] = await Promise.all([
     agentOnline(),
     appointmentsRepo.findRange(t, t),
     conversationsRepo.countNewClientsToday(),
@@ -145,7 +168,10 @@ router.get('/dashboard', async (req, res) => {
     appointmentsRepo.findUpcoming(5),
     conversationsRepo.listConversations(),
     conversationsRepo.activityLast7Days(),
+    pool.query(`SELECT COALESCE(SUM(price),0)::numeric AS total, COUNT(*)::int AS cnt FROM appointments WHERE appointment_date >= date_trunc('month', CURRENT_DATE) AND status IN ('finalizado','curso','confirmado')`),
   ]);
+  const ingresosMes = parseFloat(mesIngresos.rows[0]?.total || 0);
+  const turnosMes = mesIngresos.rows[0]?.cnt || 0;
   const confirmados = turnosHoyAll.filter(a => ['confirmado','curso','finalizado'].includes(a.status)).length;
   const cancelados = turnosHoyAll.filter(a => ['cancelado','noasistio'].includes(a.status)).length;
   const pendientes = turnosHoyAll.filter(a => a.status === 'pendiente').length;
@@ -161,6 +187,7 @@ router.get('/dashboard', async (req, res) => {
     ['st-bad', 'Cancelados', cancelados, 'hoy', `${B}/dashboard/agenda`],
     ['st-info', 'Ingresos del día', '$' + ingresos.toLocaleString('es-AR'), 'estimado', `${B}/dashboard/agenda`],
     ['st-warn', 'Derivaciones', derivs, 'hoy', `${B}/dashboard/derivaciones`],
+    ['st-pink', 'Ingresos del mes', '$' + ingresosMes.toLocaleString('es-AR'), `${turnosMes} turnos facturados`, `${B}/dashboard/estadisticas`],
   ]
     .map(
       ([cls, lbl, num, sub, href]) =>
@@ -481,6 +508,13 @@ router.get('/dashboard/mensajes', async (req, res) => {
     <div class="chat-input">
       <input type="text" id="replyMsg" placeholder="Escribí un mensaje…" autocomplete="off">
       <button id="sendBtn" title="Enviar">➤</button>
+    </div>
+    <div class="notes-panel">
+      <div class="notes-head" onclick="document.getElementById('notesBody').classList.toggle('open')">📝 Notas del cliente <span class="notes-cnt" id="notesCnt">0</span> <span style="margin-left:auto;font-size:.7rem">▼</span></div>
+      <div id="notesBody" class="notes-body">
+        <div id="notesList"></div>
+        <div class="notes-add"><input id="noteInput" placeholder="Agregar nota…"><button id="noteBtn">+</button></div>
+      </div>
     </div>`
       : '<div class="chat-empty">Elegí una conversación para ver el chat</div>';
   const content = `<style>
@@ -504,6 +538,22 @@ router.get('/dashboard/mensajes', async (req, res) => {
 .chat-input button:hover{background:var(--acc2);transform:scale(1.05)}
 .chat-input button:disabled{opacity:.4;cursor:default;transform:none}
 .bubble-human{align-self:flex-end;background:var(--warn);color:#1a1d26;border-bottom-right-radius:4px}
+.notes-panel{border-top:1px solid var(--line);background:var(--card)}
+.notes-head{display:flex;align-items:center;gap:6px;padding:8px 14px;font-size:.78rem;font-weight:600;color:var(--mut);cursor:pointer;user-select:none}
+.notes-head:hover{color:var(--txt)}
+.notes-cnt{background:var(--card2);padding:0 6px;border-radius:99px;font-size:.65rem}
+.notes-body{display:none;padding:8px 14px 10px;max-height:140px;overflow-y:auto}
+.notes-body.open{display:block}
+.note-item{display:flex;justify-content:space-between;align-items:start;padding:5px 0;border-bottom:1px solid var(--line);font-size:.8rem;gap:8px}
+.note-item:last-child{border-bottom:none}
+.note-item .nt{flex:1;line-height:1.4}
+.note-item .nd{font-size:.65rem;color:var(--mut);white-space:nowrap}
+.note-item .nx{color:var(--bad);cursor:pointer;font-size:.7rem;opacity:.5;border:none;background:none}
+.note-item .nx:hover{opacity:1}
+.notes-add{display:flex;gap:6px;margin-top:6px}
+.notes-add input{flex:1;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:.8rem;outline:none}
+.notes-add input:focus{border-color:var(--acc2)}
+.notes-add button{padding:6px 12px;border-radius:7px;background:var(--acc);color:#fff;border:none;font-weight:700;cursor:pointer;font-size:.9rem}
 .chat-back{display:none;color:var(--acc2);text-decoration:none;font-size:1.3rem;font-weight:700;padding:0 8px 0 0}
 @media(max-width:760px){
   .chat-wrap.has-sel .conv-list{display:none}
@@ -573,6 +623,40 @@ async function toggleAi(phone,enabled){
       }
     }catch(e){}
   },15000);
+})();
+// Notes CRM
+(function(){
+  var list=document.getElementById('notesList'),cnt=document.getElementById('notesCnt'),
+      ni=document.getElementById('noteInput'),nb=document.getElementById('noteBtn');
+  if(!list||!selPhone)return;
+  async function loadNotes(){
+    try{
+      var r=await fetch('${B}/dashboard/api/notes?phone='+encodeURIComponent(selPhone));
+      var notes=await r.json();
+      cnt.textContent=notes.length;
+      list.innerHTML=notes.length?notes.map(function(n){
+        var d=new Date(n.created_at);
+        var ds=d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+        return '<div class="note-item"><div class="nt">'+n.note.replace(/</g,'&lt;')+'</div><div class="nd">'+ds+'</div><button class="nx" data-id="'+n.id+'" title="Eliminar">✕</button></div>';
+      }).join(''):'<div style="color:var(--mut);font-size:.75rem;padding:4px 0">Sin notas aún</div>';
+    }catch(e){}
+  }
+  loadNotes();
+  nb.onclick=async function(){
+    var t=ni.value.trim();if(!t)return;
+    nb.disabled=true;
+    try{
+      await fetch('${B}/dashboard/api/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:selPhone,note:t})});
+      ni.value='';loadNotes();
+    }catch(e){alert('Error al guardar nota')}
+    nb.disabled=false;ni.focus();
+  };
+  ni.onkeydown=function(e){if(e.key==='Enter')nb.onclick()};
+  list.onclick=async function(e){
+    var b=e.target.closest('.nx');if(!b)return;
+    if(!confirm('¿Eliminar esta nota?'))return;
+    try{await fetch('${B}/dashboard/api/notes/'+b.dataset.id,{method:'DELETE'});loadNotes();}catch(e){}
+  };
 })();
 </script>`;
   const badges = await getNavBadges();

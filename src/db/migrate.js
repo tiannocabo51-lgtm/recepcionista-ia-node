@@ -29,6 +29,14 @@ const MIGRATIONS = [
   // Index for appointment date lookups
   `CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(appointment_date)`,
   `CREATE INDEX IF NOT EXISTS idx_appointments_phone ON appointments(phone)`,
+  // Client notes (CRM)
+  `CREATE TABLE IF NOT EXISTS client_notes (
+     id         SERIAL PRIMARY KEY,
+     phone      VARCHAR(30) NOT NULL,
+     note       TEXT NOT NULL,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_client_notes_phone ON client_notes(phone)`,
 ];
 
 async function runMigrations() {
