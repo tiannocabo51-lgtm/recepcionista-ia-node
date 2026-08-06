@@ -37,8 +37,8 @@ router.post('/webhook', async (req, res) => {
   if (!parsed) return;
 
   // Contactos bloqueados (personales del dueño) → ignorar
-  const business = require('../utils/businessConfig');
-  if (business.contactosBloqueados && business.contactosBloqueados.includes(parsed.phone)) {
+  const blockedContacts = require('../db/blockedContacts.repository');
+  if (blockedContacts.isBlocked(parsed.phone)) {
     logger.info(`Contacto bloqueado ${parsed.phone}, ignorando`);
     return;
   }

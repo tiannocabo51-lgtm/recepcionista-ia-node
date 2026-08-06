@@ -364,24 +364,21 @@ router.get('/dashboard/leads', async (req, res) => {
 });
 
 // ── API: Contactos bloqueados ──────────────────────────────────────────
+const blockedContacts = require('../db/blockedContacts.repository');
+
 router.post('/dashboard/api/block-contact', express.json(), async (req, res) => {
   const { phone } = req.body;
   if (!phone || !/^\d{8,15}$/.test(phone.trim())) {
     return res.status(400).json({ error: 'Número inválido (solo dígitos, 8-15 chars)' });
   }
-  const clean = phone.trim();
-  if (!business.contactosBloqueados) business.contactosBloqueados = [];
-  if (!business.contactosBloqueados.includes(clean)) {
-    business.contactosBloqueados.push(clean);
-  }
-  res.json({ ok: true, bloqueados: business.contactosBloqueados });
+  await blockedContacts.add(phone.trim());
+  res.json({ ok: true });
 });
 
 router.post('/dashboard/api/unblock-contact', express.json(), async (req, res) => {
   const { phone } = req.body;
-  if (!business.contactosBloqueados) return res.json({ ok: true, bloqueados: [] });
-  business.contactosBloqueados = business.contactosBloqueados.filter((p) => p !== phone);
-  res.json({ ok: true, bloqueados: business.contactosBloqueados });
+  await blockedContacts.remove(phone);
+  res.json({ ok: true });
 });
 
 router.get('/dashboard/ajustes', async (req, res) => {
@@ -389,9 +386,10 @@ router.get('/dashboard/ajustes', async (req, res) => {
   const horarios = business.horarios
     .map((h) => `${escapeHtml(h.dia)}: ${escapeHtml(h.horario)}`)
     .join('<br>');
-  const bloqueados = (business.contactosBloqueados || [])
-    .map((p) => `<div class="block-item"><span>${escapeHtml(p)}</span><button class="btn btn-sm btn-danger" onclick="unblock('${escapeHtml(p)}')">Quitar</button></div>`)
-    .join('') || '<p class="empty">No hay contactos bloqueados.</p>';
+  const listaBlocked = await blockedContacts.list();
+  const bloqueados = listaBlocked.length
+    ? listaBlocked.map((p) => `<div class="block-item"><span>${escapeHtml(p)}</span><button class="btn btn-sm btn-danger" onclick="unblock('${escapeHtml(p)}')">Quitar</button></div>`).join('')
+    : '<p class="empty">No hay contactos bloqueados.</p>';
 
   const content = `<style>
 .block-section{margin-top:28px;padding:20px;background:var(--card);border:1px solid var(--line);border-radius:14px}

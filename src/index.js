@@ -25,6 +25,7 @@ app.use((err, req, res, next) => {
 
 const followUpService = require('./services/followUpService');
 const connectionMonitor = require('./services/connectionMonitor');
+const blockedContacts = require('./db/blockedContacts.repository');
 
 const server = app.listen(config.port, () => {
   logger.info(`Servidor escuchando en el puerto ${config.port} (${config.nodeEnv})`);
@@ -32,6 +33,7 @@ const server = app.listen(config.port, () => {
   logger.info(`Health check: GET http://localhost:${config.port}/health`);
   followUpService.start();
   connectionMonitor.start();
+  blockedContacts.loadCache();
 });
 
 function shutdown(signal) {
