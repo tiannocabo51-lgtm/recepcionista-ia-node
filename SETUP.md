@@ -48,16 +48,22 @@ cp businessConfig.example.js src/utils/businessConfig.js
 ```
 
 Editar `src/utils/businessConfig.js` con los datos reales del cliente:
-- Nombre del negocio
-- Nombre de la recepcionista virtual
-- Descripción
-- Instagram
-- Ubicación y link de Maps
+- Nombre del negocio y recepcionista virtual
+- Descripción e Instagram
+- Ubicación (dirección, ciudad, provincia, estacionamiento, referencia)
 - Horarios de atención
-- Formas de pago
-- Políticas (cancelación, llegada tarde, primera vez)
-- Lista completa de servicios con precios
+- Formas de pago (con alias de transferencia/MP)
+- Políticas (cancelación, llegada tarde, señas, menores, reembolsos, facturación)
+- Configuración de agenda (duración mínima, gap entre turnos, confirmación automática/manual)
+- Profesionales (nombre, rol, horario, servicios que atiende)
+- Lista completa de servicios con categoría, duración, precio y descripción
 - Promociones vigentes
+- Combinaciones de servicios, contraindicaciones, frecuencia recomendada
+- Preguntas frecuentes (la IA las responde automáticamente)
+- Temas que derivan a humano
+- Configuración de mensajes de la IA (saludo, despedida, tono, emojis, frases permitidas/prohibidas)
+- Recordatorios (timing, cumpleaños, clientes inactivos)
+- Preferencias de dashboard y marketing
 
 ### 4. Levantar con Docker
 
@@ -93,28 +99,75 @@ Probar también un audio para confirmar que la transcripción funciona.
 
 Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales configuradas.
 
-## Notas
+---
 
-- **API keys**: cada cliente DEBE tener su propia API key de Anthropic. No compartir entre clientes.
-- **Rebuild**: después de editar código, siempre `docker compose up -d --build app` (no solo restart).
-- **Audios**: necesitan GROQ_API_KEY configurada. Sin ella, el bot pide que escriban por texto.
+## Funcionalidades del sistema
+
+### Core del agente
+
+- **Prompt conversacional**: el system prompt está diseñado para que la IA suene como una persona real, no como un bot. Matchea el tono del cliente, mensajes cortos (2-3 líneas), sin frases robóticas. Se configura automáticamente con los datos de `businessConfig.js`.
+- **Comprensión de audios**: transcribe audios de WhatsApp con Whisper vía Groq. Necesita `GROQ_API_KEY`. Sin ella, el bot pide que escriban por texto.
+- **Rate limiting**: máximo 10 mensajes por minuto por teléfono en el webhook. Protege contra spam y ahorra costo de API.
 - **Toggle IA/Humano**: desde el dashboard se puede desactivar la IA por chat para que responda un humano.
-- **Seguimiento automático de leads**: viene activado por defecto. Cada hora chequea leads estancados (estado "nuevo" o "consultando") y les manda un mensaje de seguimiento:
+- **Contactos bloqueados**: se pueden bloquear contactos desde Ajustes en el dashboard. La IA no les responde. También se pueden cargar contactos iniciales en `businessConfig.js` > `contactosBloqueados`.
+
+### Servicios automáticos (arrancan solos)
+
+- **Seguimiento automático de leads**: cada hora chequea leads estancados ("nuevo" o "consultando") y les manda un mensaje de seguimiento.
   - 1er seguimiento: a las 24hs sin respuesta
   - 2do seguimiento: a las 72hs sin respuesta
   - Máximo 2 seguimientos por lead, después no le escribe más
   - Solo manda en horario comercial (9 a 20hs, nunca domingos)
   - Notifica al dueño del negocio cada vez que manda un seguimiento
   - Si el lead responde, se resetea el contador automáticamente
-- **Monitor de conexión**: chequea cada 5 minutos si WhatsApp sigue conectado. Si se desconecta, manda un mensaje de alerta al número configurado en `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas para no spamear. Es silencioso mientras todo ande bien.
-- **Prompt conversacional**: el system prompt está diseñado para que la IA suene como una persona real, no como un bot. Matchea el tono del cliente, mensajes cortos (2-3 líneas), sin frases robóticas. Se configura automáticamente con los datos de `businessConfig.js`.
-- **Nginx reverse proxy**: cada cliente se accede por path en el puerto 80: `http://IP-VPS/nombre-cliente/dashboard`. Config en `/etc/nginx/sites-available/wayudu`. Para agregar un cliente nuevo, agregar un bloque `location /nombre-cliente/` apuntando al puerto del cliente. Recordar setear `BASE_PATH=/nombre-cliente` en el `.env` del cliente.
-- **Contactos bloqueados**: para clientes que usan WhatsApp personal/laboral, se pueden bloquear contactos desde Ajustes en el dashboard. La IA no les responde. También se pueden cargar contactos iniciales en `businessConfig.js` > `contactosBloqueados`.
-- **Agenda interactiva**: el dashboard tiene una agenda completa con drag-drop de turnos, bloqueo de horarios, colores por estado, vista semana/día/mes/timeline. Las migraciones de la DB se ejecutan automáticamente al arrancar la app (no hace falta tocar la DB).
+
+- **Monitor de conexión**: chequea cada 5 minutos si WhatsApp sigue conectado. Si se desconecta, manda alerta al `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas. Banner offline visible en el dashboard.
+
+- **Recordatorios de turnos**: envía recordatorio automático de turnos por WhatsApp. Timing configurable en `businessConfig.js` > `recordatorios.antesDeTurno`:
+  - `'2h'` — 2 horas antes del turno (por defecto)
+  - `'dia_anterior_noche'` — la noche anterior al turno
+  - Incluye nombre del cliente, servicio, hora y dirección
+  - 3 segundos de delay entre mensajes para evitar antispam
+
+- **Limpieza automática**: los mensajes de conversación de más de 90 días se eliminan al iniciar la app.
+
+### Dashboard — Páginas
+
+- **Inicio**: resumen con métricas del día (turnos, ingresos, leads nuevos, tasa no-show), gráfico de ingresos semanal, countdown al próximo turno, acciones rápidas (nuevo turno, bloquear horario, ver leads).
+- **Agenda**: vista interactiva con drag-drop de turnos, bloqueo de horarios, colores por estado, vista semana/día/mes/timeline. Multi-profesional (columnas separadas por profesional).
+- **Leads**: tabla con todos los contactos, estados (nuevo → consultando → turno → cliente → inactivo), cambio de estado inline, tags personalizados por lead, toggle IA/Humano, exportar a CSV.
+- **Conversaciones**: historial de chats con cada contacto, envío manual de mensajes.
+- **Estadísticas**: resumen del mes (turnos, ingresos, servicios más pedidos, funnel de leads, tasa de cancelación, tasa no-show), comparación vs mes anterior con badges ↑↓%.
+- **Ajustes**: toggle de conexión WhatsApp, gestión de contactos bloqueados, log de actividad del sistema.
+
+### Dashboard — CRM
+
+- **Notas por cliente**: agregar, ver y eliminar notas en cada lead. Panel dedicado en la vista de conversación.
+- **Perfil de cliente**: panel con historial de turnos, total gastado, servicios más pedidos, tasa de no-show individual.
+- **Tags personalizados**: etiquetar leads con tags libres (ej: "VIP", "primera vez", "sensible"). Se pueden agregar y eliminar desde la tabla de leads.
+- **Log de actividad**: registra automáticamente acciones del dashboard (crear/cancelar/completar turnos, cambiar estado de leads, enviar mensajes, agregar tags). Visible en Ajustes.
+
+### Dashboard — Exportación
+
+- **Exportar leads a CSV**: botón "📥 CSV" en la página de Leads.
+- **Exportar turnos por rango**: `GET /dashboard/api/appointments/export?from=2026-01-01&to=2026-01-31`.
+
+### Infraestructura
+
+- **API keys**: cada cliente DEBE tener su propia API key de Anthropic. No compartir entre clientes.
+- **Rebuild**: después de editar código, siempre `docker compose build --no-cache app && docker compose up -d app` (no solo restart).
 - **Migraciones automáticas**: al hacer `docker compose up`, la app detecta columnas y tablas faltantes y las agrega sola. No hace falta ejecutar SQL manualmente.
-- **Estadísticas mensuales**: nueva página `/dashboard/estadisticas` con resumen del mes (turnos, ingresos, servicios más pedidos, funnel de leads, tasa de cancelación).
-- **Exportar leads/turnos a CSV**: desde la página de Leads hay un botón "📥 CSV". También se puede exportar turnos por rango de fechas via API: `GET /dashboard/api/appointments/export?from=2026-01-01&to=2026-01-31`.
-- **Multi-profesional**: configurar profesionales en `businessConfig.js` > `profesionales`. La agenda los muestra como columnas separadas.
-- **Rate limiting**: máximo 10 mensajes por minuto por teléfono en el webhook. Protege contra spam y ahorra costo de API.
-- **Limpieza automática**: los mensajes de conversación de más de 90 días se eliminan automáticamente al iniciar la app.
+- **Nginx reverse proxy**: cada cliente se accede por path en el puerto 80: `http://IP-VPS/nombre-cliente/dashboard`. Config en `/etc/nginx/sites-available/wayudu`. Para agregar un cliente nuevo, agregar un bloque `location /nombre-cliente/` apuntando al puerto del cliente. Recordar setear `BASE_PATH=/nombre-cliente` en el `.env` del cliente.
 - **`ALERT_PHONE`**: opcional en `.env`. Número para alertas de desconexión. Si no se configura, usa `RECEPTIONIST_PHONE`.
+
+### Tablas de la DB (se crean automáticamente)
+
+| Tabla | Para qué |
+|---|---|
+| `leads` | Contactos (nombre, teléfono, estado, seguimiento, toggle IA) |
+| `appointments` | Turnos (fecha, servicio, precio, duración, color, profesional) |
+| `conversations` | Mensajes de chat (teléfono, rol, contenido, timestamps) |
+| `blocks` | Bloqueos de horario en la agenda |
+| `client_notes` | Notas CRM por cliente |
+| `lead_tags` | Tags personalizados por lead |
+| `activity_log` | Log de actividad del dashboard |
