@@ -17,15 +17,12 @@ const HORARIO_FIN = 20;               // no mandar después de las 20
 
 function isBusinessHours() {
   const now = new Date();
-  // Hora Argentina (UTC-3)
   const argHour = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' })).getHours();
   const argDay = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' })).getDay();
-  // 0 = domingo, 6 = sábado
   if (argDay === 0) return false; // no mandar domingos
   return argHour >= HORARIO_INICIO && argHour < HORARIO_FIN;
 }
 
-// Busca leads que necesitan seguimiento
 async function getStaleLeads() {
   const result = await pool.query(
     `SELECT l.phone, l.nombre, l.estado, l.interes, l.followup_count,
@@ -46,27 +43,17 @@ async function getStaleLeads() {
   return result.rows;
 }
 
-// Genera un mensaje de seguimiento personalizado usando el historial
+// Genera un mensaje de seguimiento usando handleMessage con flag isSystemFollowUp
 async function generateFollowUp(phone, lead) {
   try {
-    const history = await conversationsRepo.findByPhone(phone, 15);
-    if (!history.length) return null;
-
-    const lastUserMsg = [...history].reverse().find((m) => m.role === 'user');
-    const transcript = history
-      .slice(-8) // últimos 8 mensajes para contexto
-      .map((m) => `${m.role === 'user' ? 'Cliente' : 'Asistente'}: ${m.content}`)
-      .join('\n');
-
     const isSecond = lead.followup_count === 1;
 
-    const reply = await claudeService.handleMessage(
-      phone,
-      isSecond
-        ? `[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Han pasado 3 días desde el último contacto con este cliente. Generá un último mensaje de seguimiento breve y cálido. Si preguntó por algo específico, retomá eso. No seas insistente, simplemente recordale que estás disponible. Si no responde a este, no le vamos a volver a escribir.`
-        : `[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Han pasado 24hs sin respuesta de este cliente. Generá un mensaje de seguimiento corto y natural, como lo haría una recepcionista real. Si el cliente preguntó por un servicio o precio, retomá desde ahí. No digas "te escribo para hacer seguimiento" ni nada que suene a bot.`
-    );
+    const systemPrompt = isSecond
+      ? '[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Han pasado 3 días desde el último contacto con este cliente. Generá un último mensaje de seguimiento breve y cálido. Si preguntó por algo específico, retomá eso. No seas insistente, simplemente recordale que estás disponible. Si no responde a este, no le vamos a volver a escribir.'
+      : '[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Han pasado 24hs sin respuesta de este cliente. Generá un mensaje de seguimiento corto y natural, como lo haría una recepcionista real. Si el cliente preguntó por un servicio o precio, retomá desde ahí. No digas "te escribo para hacer seguimiento" ni nada que suene a bot.';
 
+    // Usar isSystemFollowUp: true para que NO guarde como mensaje del usuario
+    const reply = await claudeService.handleMessage(phone, systemPrompt, { isSystemFollowUp: true });
     return reply;
   } catch (err) {
     logger.error(`[Followup] Error generando mensaje para ${phone}:`, err.message);
@@ -74,25 +61,22 @@ async function generateFollowUp(phone, lead) {
   }
 }
 
-// Marca el lead como seguido
 async function markFollowUp(phone) {
   await pool.query(
-    `UPDATE leads SET followup_count = followup_count + 1, last_followup_at = now() WHERE phone = $1`,
+    'UPDATE leads SET followup_count = followup_count + 1, last_followup_at = now() WHERE phone = $1',
     [phone]
   );
 }
 
-// Resetea el contador cuando el lead responde (llamar desde el webhook)
 async function resetFollowUp(phone) {
   await pool.query(
-    `UPDATE leads SET followup_count = 0, last_followup_at = NULL WHERE phone = $1`,
+    'UPDATE leads SET followup_count = 0, last_followup_at = NULL WHERE phone = $1',
     [phone]
   );
 }
 
 // ── Confirmación de turnos ──────────────────────────────────────────────
 
-// Busca turnos de mañana que todavía están en "pendiente"
 async function getPendingAppointments() {
   const result = await pool.query(
     `SELECT a.id, a.name, a.phone, a.service,
@@ -108,16 +92,14 @@ async function getPendingAppointments() {
   return result.rows;
 }
 
-// Genera mensaje de confirmación personalizado
 async function generateConfirmation(appt) {
   try {
     const dayName = new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long' });
     const time = appt.appointment_time.slice(0, 5);
 
-    const reply = await claudeService.handleMessage(
-      appt.phone,
-      `[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Mandá un mensaje corto y cálido para confirmar el turno de mañana. Datos: ${appt.name}, ${appt.service}, mañana ${dayName} a las ${time}hs. Preguntale si confirma. No digas "te escribo para confirmar tu turno" ni nada robótico, soná natural como una recepcionista que le recuerda. Si dice que sí, confirmalo. Si dice que no puede, ofrecé reprogramar.`
-    );
+    const systemPrompt = `[SISTEMA INTERNO - NO VISIBLE AL CLIENTE]: Mandá un mensaje corto y cálido para confirmar el turno de mañana. Datos: ${appt.name}, ${appt.service}, mañana ${dayName} a las ${time}hs. Preguntale si confirma. No digas "te escribo para confirmar tu turno" ni nada robótico, soná natural como una recepcionista que le recuerda. Si dice que sí, confirmalo. Si dice que no puede, ofrecé reprogramar.`;
+
+    const reply = await claudeService.handleMessage(appt.phone, systemPrompt, { isSystemFollowUp: true });
     return reply;
   } catch (err) {
     logger.error(`[Followup] Error generando confirmación para ${appt.phone}:`, err.message);
@@ -170,7 +152,6 @@ async function runFollowUps() {
     }
 
     for (const appt of pendingAppts) {
-      // Esperar entre mensajes
       const delay = 30000 + Math.random() * 30000;
       await new Promise((r) => setTimeout(r, delay));
 
@@ -198,10 +179,8 @@ async function runFollowUps() {
   }
 }
 
-// Inicia el loop
 function start() {
   logger.info(`[Followup] Sistema de seguimiento activo — check cada ${CHECK_INTERVAL_MS / 60000} min`);
-  // Primera ejecución a los 5 min de arrancar (dar tiempo a que todo levante)
   setTimeout(runFollowUps, 5 * 60 * 1000);
   setInterval(runFollowUps, CHECK_INTERVAL_MS);
 }

@@ -14,6 +14,9 @@ const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 const MAX_TOOL_ROUNDS = 4;
 
+// Tiempo mínimo entre saludos para la misma conversación
+const GREETING_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 horas
+
 const TOOLS = [
   {
     name: 'crear_turno',
@@ -116,12 +119,11 @@ async function executeTool(name, input, phone) {
 
   if (name === 'cambiar_estado_turno') {
     try {
-      // Find the client's upcoming appointment
       const upcoming = await appointmentsRepo.findUpcomingByPhone(phone);
       if (!upcoming.length) {
         return JSON.stringify({ ok: false, error: 'No se encontró un turno próximo para este número' });
       }
-      const appt = upcoming[0]; // most recent upcoming
+      const appt = upcoming[0];
       const pool = require('../db/pool');
       await pool.query('UPDATE appointments SET status=$1 WHERE id=$2', [input.status, appt.id]);
       const statusLabel = input.status === 'confirmado' ? '✅ Confirmado' : '❌ Cancelado';
@@ -160,20 +162,77 @@ function extractText(content) {
     .trim();
 }
 
-// Procesa un mensaje entrante de un teléfono y devuelve el texto de respuesta final.
-async function handleMessage(phone, userMessage) {
+/**
+ * Determina contexto de la conversación para controlar saludos y comportamiento.
+ */
+async function getConversationContext(phone) {
   const history = await conversationsRepo.getRecentHistory(phone);
-  await conversationsRepo.saveMessage(phone, 'user', userMessage);
+  const isNewConversation = history.length === 0;
 
+  // Consultar timestamp del último mensaje del bot
+  const pool = require('../db/pool');
+  let lastAssistantTime = 0;
+  try {
+    const lastBotMsg = await pool.query(
+      'SELECT created_at FROM conversations WHERE phone = $1 AND role = $2 ORDER BY created_at DESC LIMIT 1',
+      [phone, 'assistant']
+    );
+    if (lastBotMsg.rows.length) {
+      lastAssistantTime = new Date(lastBotMsg.rows[0].created_at).getTime();
+    }
+  } catch (err) {
+    logger.error('Error consultando último mensaje del bot:', err.message);
+  }
+
+  const timeSinceLastReply = Date.now() - lastAssistantTime;
+  const isResuming = lastAssistantTime > 0 && timeSinceLastReply > GREETING_COOLDOWN_MS;
+
+  return { history, isNewConversation, isResuming };
+}
+
+/**
+ * Procesa un mensaje entrante y devuelve el texto de respuesta.
+ * options.isSystemFollowUp = true cuando lo llama el followUpService
+ */
+async function handleMessage(phone, userMessage, options = {}) {
+  const { isSystemFollowUp = false } = options;
+
+  const ctx = await getConversationContext(phone);
+
+  // Guardar mensaje del usuario (no para follow-ups del sistema)
+  if (!isSystemFollowUp) {
+    await conversationsRepo.saveMessage(phone, 'user', userMessage);
+  }
 
   await leadsRepo.ensureLead(phone).catch(() => {});
 
   const messages = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
+    ...ctx.history.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 
-  const system = buildSystemPrompt({ phone, now: new Date() });
+  // System prompt con reglas anti-spam inyectadas
+  let system = buildSystemPrompt({ phone, now: new Date() });
+
+  const antiSpamRules = [
+    '',
+    '## REGLAS DE CONVERSACIÓN (OBLIGATORIAS)',
+    '',
+    '1. RESPUESTA ÚNICA: Respondé con UN SOLO mensaje. Toda la información va en una sola burbuja de WhatsApp. NUNCA dividas tu respuesta en varios mensajes separados.',
+    '2. ESPERÁ AL USUARIO: Después de responder, esperá a que la persona te escriba. NUNCA envíes un segundo mensaje si la persona no respondió.',
+    '3. UNA PREGUNTA POR MENSAJE: Hacé una sola pregunta por respuesta. No bombardees con preguntas.',
+    '4. MENSAJES CORTOS: Máximo 4 líneas. Como lo escribiría una persona real en WhatsApp.',
+  ].join('\n');
+
+  system += antiSpamRules;
+
+  if (ctx.isNewConversation) {
+    system += '\n5. PRIMERA VEZ: Esta es la primera vez que esta persona escribe. Podés saludar y presentarte brevemente.';
+  } else if (ctx.isResuming) {
+    system += '\n5. CONVERSACIÓN RETOMADA: Pasaron más de 12 horas desde tu último mensaje. Podés saludar brevemente.';
+  } else {
+    system += '\n5. CONVERSACIÓN EN CURSO: Ya estás hablando con esta persona. NO te presentes de nuevo. NO digas "Hola, soy Juli" ni "¿En qué te puedo ayudar?". Respondé directamente a lo que dice.';
+  }
 
   let finalText = '';
 
@@ -205,15 +264,10 @@ async function handleMessage(phone, userMessage) {
 
   if (!finalText) {
     finalText =
-      'Perdón, se me complicó procesar tu mensaje. ¿Podés reformularlo? Si preferís, ' +
-      'te derivo directo con la recepcionista.';
+      'Perdón, se me complicó procesar tu mensaje. ¿Podés reformularlo? Si preferís, te derivo directo con la recepcionista.';
   }
 
   await conversationsRepo.saveMessage(phone, 'assistant', finalText);
-
-  // Lead classification is now handled inline via the clasificar_lead tool
-  // (the AI calls it on every response as instructed in the system prompt).
-  // The separate maybeClassify call was removed to avoid double API cost.
 
   return finalText;
 }

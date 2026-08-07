@@ -111,6 +111,21 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
 - **Toggle IA/Humano**: desde el dashboard se puede desactivar la IA por chat para que responda un humano.
 - **Contactos bloqueados**: se pueden bloquear contactos desde Ajustes en el dashboard. La IA no les responde. También se pueden cargar contactos iniciales en `businessConfig.js` > `contactosBloqueados`.
 
+### Sistema anti-spam (conversationLock)
+
+Módulo `src/services/conversationLock.js` — 7 capas de protección para que el agente nunca spamee:
+
+- **Deduplicación por messageId**: cada webhook de Evolution API trae un ID único. Si ya se procesó, se ignora. Protege contra webhooks duplicados, retries y sync histórico al reconectar WhatsApp. TTL de 5 minutos.
+- **Filtro de mensajes antiguos**: si el `messageTimestamp` del webhook tiene más de 2 minutos de antigüedad, se descarta. Evita que al reconectar WhatsApp se procesen mensajes históricos como nuevos.
+- **Lock exclusivo por teléfono**: solo se procesa un mensaje a la vez por número. Si llega otro mientras se está procesando, se encola (máximo 1 en cola — el más reciente gana, el anterior se descarta). Elimina race conditions.
+- **Anti-burst**: máximo 2 respuestas del bot en 30 segundos sin que el usuario haya vuelto a escribir. Después se frena automáticamente. Se resetea cuando el usuario escribe.
+- **Control de saludo inteligente**: consulta la DB para saber cuándo fue el último mensaje del bot.
+  - **Conversación nueva** → se presenta normalmente
+  - **Más de 12 horas sin hablar** → re-saluda brevemente
+  - **Conversación en curso** → NO se presenta, responde directo (regla inyectada al system prompt)
+- **Reglas anti-spam en el system prompt**: se inyectan automáticamente instrucciones obligatorias: respuesta única, esperá al usuario, una pregunta por mensaje, máximo 4 líneas.
+- **Follow-ups sin contaminar historial**: el sistema de seguimiento automático usa `{ isSystemFollowUp: true }` para que sus prompts internos no se guarden como mensajes del usuario en la DB.
+
 ### Servicios automáticos (arrancan solos)
 
 - **Seguimiento automático de leads**: cada hora chequea leads estancados ("nuevo" o "consultando") y les manda un mensaje de seguimiento.
