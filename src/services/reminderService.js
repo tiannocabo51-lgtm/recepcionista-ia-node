@@ -1,7 +1,7 @@
 const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsappService');
-const business = require('../../businessConfig');
+const business = require('../utils/businessConfig');
 
 const REMINDER_HOURS = 2; // Send reminder X hours before appointment
 const CHECK_INTERVAL_MS = 10 * 60 * 1000; // Check every 10 minutes
