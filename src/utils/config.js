@@ -18,11 +18,21 @@ const config = {
 
   databaseUrl: required('DATABASE_URL'),
 
-  evolutionApiUrl: required('EVOLUTION_API_URL').replace(/\/+$/, ''),
-  evolutionApiKey: required('EVOLUTION_API_KEY'),
-  evolutionInstance: required('EVOLUTION_INSTANCE'),
+  // WhatsApp Cloud API (API oficial de Meta) — ver SETUP.md
+  waPhoneNumberId: required('WA_PHONE_NUMBER_ID'),
+  waAccessToken: required('WA_ACCESS_TOKEN'),
+  waAppSecret: required('WA_APP_SECRET'),
+  waGraphVersion: process.env.WA_GRAPH_VERSION || 'v23.0',
+  waTemplateLang: process.env.WA_TEMPLATE_LANG || 'es_AR',
+  // Plantillas aprobadas en WhatsApp Manager (ver SETUP.md). Vacías = no se usan.
+  waTemplates: {
+    aviso: process.env.WA_TEMPLATE_AVISO || null,
+    recordatorio: process.env.WA_TEMPLATE_RECORDATORIO || null,
+    confirmacion: process.env.WA_TEMPLATE_CONFIRMACION || null,
+    seguimiento: process.env.WA_TEMPLATE_SEGUIMIENTO || null,
+  },
 
-  webhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || null,
+  webhookVerifyToken: required('WEBHOOK_VERIFY_TOKEN'),
 
   groqApiKey: process.env.GROQ_API_KEY || null,
 

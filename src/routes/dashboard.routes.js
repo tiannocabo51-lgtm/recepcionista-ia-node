@@ -31,6 +31,9 @@ router.post('/dashboard/api/send-reply', express.json(), async (req, res) => {
   const { phone, message } = req.body;
   if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
   try {
+    if (!(await whatsappService.isWindowOpen(phone))) {
+      return res.json({ ok: false, error: 'Pasaron más de 24hs desde su último mensaje: WhatsApp solo deja escribirle con una plantilla aprobada.' });
+    }
     const sent = await whatsappService.sendMessage(phone, message.trim());
     if (sent) {
       // Save to conversations so it shows in chat
@@ -137,12 +140,11 @@ router.post('/dashboard/api/toggle-ai', express.json(), async (req, res) => {
 
 async function agentOnline() {
   try {
-    const r = await fetch(
-      `${config.evolutionApiUrl}/instance/connectionState/${config.evolutionInstance}`,
-      { headers: { apikey: config.evolutionApiKey }, signal: AbortSignal.timeout(1500) }
-    );
-    const j = await r.json();
-    return (j.instance && j.instance.state) === 'open';
+    const state = await Promise.race([
+      whatsappService.getConnectionState(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+    ]);
+    return state === 'open';
   } catch {
     return null;
   }
@@ -1289,7 +1291,7 @@ router.get('/dashboard/api/stats', async (req, res) => {
 // ── Notify owner via WhatsApp ───────────────────────────────────────────
 function notifyOwner(text) {
   if (!business.whatsappHumano) return;
-  whatsappService.sendMessage(business.whatsappHumano, text).catch(() => {});
+  whatsappService.sendOwnerNotice(business.whatsappHumano, text).catch(() => {});
 }
 
 module.exports = router;

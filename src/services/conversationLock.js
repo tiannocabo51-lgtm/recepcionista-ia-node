@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 
-// ── Deduplicación de mensajes (por messageId de Evolution API) ──────────
+// ── Deduplicación de mensajes (por messageId de WhatsApp) ──────────
 // Evita procesar el mismo webhook dos veces (reconexión, retry, sync histórico)
 const processedMessages = new Map();
 const DEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutos
