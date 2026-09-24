@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const config = require('../utils/config');
 const logger = require('../utils/logger');
@@ -36,7 +37,18 @@ setInterval(() => {
   }
 }, 300000);
 
+// Meta firma cada webhook con el App Secret (header X-Hub-Signature-256).
+function hasValidMetaSignature(req) {
+  const header = req.get('x-hub-signature-256') || '';
+  if (!req.rawBody || !header.startsWith('sha256=')) return false;
+  const expected = crypto.createHmac('sha256', config.waAppSecret).update(req.rawBody).digest('hex');
+  const received = header.slice('sha256='.length);
+  return received.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+}
+
 function isAuthorized(req) {
+  if (whatsappService.isCloud && config.waAppSecret) return hasValidMetaSignature(req);
   if (!config.webhookVerifyToken) return true;
   return req.query.token === config.webhookVerifyToken;
 }
@@ -63,38 +75,62 @@ async function processIncoming(phone, text) {
   }
 }
 
+// ── Verificación del webhook (solo API oficial) ─────────────────────────
+// Meta hace un GET con hub.challenge al guardar la URL en el panel de la app.
+router.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  if (mode === 'subscribe' && config.webhookVerifyToken && token === config.webhookVerifyToken) {
+    logger.info('[Webhook] Verificado por Meta');
+    return res.status(200).send(String(req.query['hub.challenge'] || ''));
+  }
+  return res.sendStatus(403);
+});
+
 // ── Webhook endpoint ────────────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
   if (!isAuthorized(req)) {
     return res.status(401).json({ status: 'unauthorized' });
   }
 
-  // Responder inmediatamente a Evolution API
+  // Responder inmediatamente para que el proveedor no reintente por timeout
   res.status(200).json({ status: 'received' });
 
-  const body = req.body;
-  const data = body?.data;
-  if (!data) return;
+  let messages;
+  try {
+    messages = whatsappService.parseIncomingMessages(req.body);
+  } catch (err) {
+    logger.error('[Webhook] No se pudo leer el evento:', err.message);
+    return;
+  }
 
-  // ── DEDUPLICACIÓN: extraer messageId y rechazar duplicados ──────────
-  const messageId = data.key?.id;
-  if (lock.isDuplicate(messageId)) {
-    logger.info(`[Dedup] Mensaje ${messageId} ya procesado, ignorando`);
+  for (const msg of messages) {
+    try {
+      await handleIncoming(msg);
+    } catch (err) {
+      logger.error(`[Webhook] Error con el mensaje de ${msg.phone}:`, err);
+    }
+  }
+});
+
+async function handleIncoming(parsed) {
+  // ── DEDUPLICACIÓN: rechazar mensajes ya procesados ──────────────────
+  if (lock.isDuplicate(parsed.id)) {
+    logger.info(`[Dedup] Mensaje ${parsed.id} ya procesado, ignorando`);
     return;
   }
 
   // ── Ignorar mensajes antiguos (sync histórico al reconectar) ───────
-  const messageTimestamp = data.messageTimestamp;
-  if (messageTimestamp) {
-    const msgAgeSeconds = Math.floor(Date.now() / 1000) - messageTimestamp;
+  if (parsed.timestamp) {
+    const msgAgeSeconds = Math.floor(Date.now() / 1000) - parsed.timestamp;
     if (msgAgeSeconds > 120) { // más de 2 minutos de antigüedad
       logger.info(`[Dedup] Mensaje de ${msgAgeSeconds}s de antigüedad, ignorando (sync histórico)`);
       return;
     }
   }
 
-  const parsed = whatsappService.parseIncomingMessage(body);
-  if (!parsed) return;
+  // Abre (o renueva) la ventana de 24hs para poder responderle, aunque la IA esté apagada
+  await whatsappService.recordInbound(parsed.phone);
 
   // ── Contactos bloqueados ───────────────────────────────────────────
   const blockedContacts = require('../db/blockedContacts.repository');
@@ -144,6 +180,6 @@ router.post('/webhook', async (req, res) => {
 
   logger.info(`Mensaje entrante de ${parsed.phone}: ${parsed.text.slice(0, 80)}`);
   await lock.withLock(parsed.phone, () => processIncoming(parsed.phone, parsed.text));
-});
+}
 
 module.exports = router;

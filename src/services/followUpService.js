@@ -4,10 +4,12 @@ const whatsappService = require('./whatsappService');
 const claudeService = require('./claudeService');
 const conversationsRepo = require('../db/conversations.repository');
 const business = require('../utils/businessConfig');
+const config = require('../utils/config');
 
 // ── Config ──────────────────────────────────────────────────────────────
 const MAX_FOLLOWUPS = 2;               // máximo 2 seguimientos por lead
-const FIRST_FOLLOWUP_HOURS = 24;       // primer seguimiento a las 24hs
+// Con la API oficial el primero sale antes de que se cierre la ventana de 24hs (gratis)
+const FIRST_FOLLOWUP_HOURS = whatsappService.isCloud ? 20 : 24;
 const SECOND_FOLLOWUP_HOURS = 72;      // segundo seguimiento a las 72hs
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // cada 1 hora
 const HORARIO_INICIO = 9;             // no mandar antes de las 9
@@ -59,6 +61,55 @@ async function generateFollowUp(phone, lead) {
     logger.error(`[Followup] Error generando mensaje para ${phone}:`, err.message);
     return null;
   }
+}
+
+// Fuera de la ventana de 24hs de la API oficial solo se puede mandar una plantilla.
+// Se guarda en el historial un resumen de lo que se le mandó, para que la IA tenga contexto
+// si la persona responde.
+async function sendTemplateWithNote(phone, name, params, note) {
+  const sent = await whatsappService.sendTemplate(phone, name, params);
+  if (sent) await conversationsRepo.saveMessage(phone, 'assistant', note).catch(() => {});
+  return sent;
+}
+
+async function sendLeadFollowUp(lead) {
+  if (await whatsappService.isWindowOpen(lead.phone)) {
+    const msg = await generateFollowUp(lead.phone, lead);
+    return msg ? whatsappService.sendMessage(lead.phone, msg) : false;
+  }
+
+  const tpl = config.waTemplates.seguimiento;
+  if (!tpl) {
+    // Sin plantilla no hay forma de escribirle: se da por cerrado para no reintentar cada hora
+    await pool.query('UPDATE leads SET followup_count = $1 WHERE phone = $2', [MAX_FOLLOWUPS, lead.phone]);
+    logger.info(`[Followup] ${lead.phone} fuera de la ventana de 24hs y sin plantilla de seguimiento, se omite`);
+    return false;
+  }
+  const interes = lead.interes || 'nuestros servicios';
+  return sendTemplateWithNote(
+    lead.phone, tpl, [lead.nombre || 'qué tal', interes],
+    `Hola${lead.nombre ? ` ${lead.nombre}` : ''}, ¿pudiste ver lo que charlamos? Si te quedó alguna duda sobre ${interes}, respondé este mensaje y te ayudamos.`
+  );
+}
+
+async function sendAppointmentConfirmation(appt) {
+  if (await whatsappService.isWindowOpen(appt.phone)) {
+    const msg = await generateConfirmation(appt);
+    return msg ? whatsappService.sendMessage(appt.phone, msg) : false;
+  }
+
+  const tpl = config.waTemplates.confirmacion;
+  if (!tpl) {
+    logger.info(`[Followup] ${appt.phone} fuera de la ventana de 24hs y sin plantilla de confirmación, se omite`);
+    return false;
+  }
+  const nombre = appt.name.split(' ')[0];
+  const dayName = new Date(appt.appointment_date + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long' });
+  const time = appt.appointment_time.slice(0, 5);
+  return sendTemplateWithNote(
+    appt.phone, tpl, [nombre, appt.service, dayName, time],
+    `Hola ${nombre}, ¿nos confirmás tu turno de ${appt.service} para mañana ${dayName} a las ${time}? Respondé este mensaje para confirmar o reprogramar.`
+  );
 }
 
 async function markFollowUp(phone) {
@@ -128,16 +179,13 @@ async function runFollowUps() {
         await new Promise((r) => setTimeout(r, delay));
       }
 
-      const msg = await generateFollowUp(lead.phone, lead);
-      if (!msg) continue;
-
-      const sent = await whatsappService.sendMessage(lead.phone, msg);
+      const sent = await sendLeadFollowUp(lead);
       if (sent) {
         await markFollowUp(lead.phone);
         logger.info(`[Followup] Seguimiento #${lead.followup_count + 1} enviado a ${lead.phone}${lead.nombre ? ` (${lead.nombre})` : ''}`);
 
         if (business.whatsappHumano) {
-          whatsappService.sendMessage(
+          whatsappService.sendOwnerNotice(
             business.whatsappHumano,
             `📋 Seguimiento automático #${lead.followup_count + 1} enviado a ${lead.nombre || lead.phone}${lead.interes ? ` (interés: ${lead.interes})` : ''}`
           ).catch(() => {});
@@ -155,15 +203,12 @@ async function runFollowUps() {
       const delay = 30000 + Math.random() * 30000;
       await new Promise((r) => setTimeout(r, delay));
 
-      const msg = await generateConfirmation(appt);
-      if (!msg) continue;
-
-      const sent = await whatsappService.sendMessage(appt.phone, msg);
+      const sent = await sendAppointmentConfirmation(appt);
       if (sent) {
         logger.info(`[Followup] Confirmación enviada a ${appt.phone} (${appt.name}) — ${appt.service} mañana ${appt.appointment_time.slice(0, 5)}`);
 
         if (business.whatsappHumano) {
-          whatsappService.sendMessage(
+          whatsappService.sendOwnerNotice(
             business.whatsappHumano,
             `📅 Confirmación de turno enviada a ${appt.name} (${appt.phone}) — ${appt.service} mañana a las ${appt.appointment_time.slice(0, 5)}`
           ).catch(() => {});

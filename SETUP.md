@@ -186,3 +186,85 @@ Módulo `src/services/conversationLock.js` — 7 capas de protección para que e
 | `client_notes` | Notas CRM por cliente |
 | `lead_tags` | Tags personalizados por lead |
 | `activity_log` | Log de actividad del dashboard |
+
+---
+
+## WhatsApp con la API oficial de Meta (Cloud API)
+
+Con `WHATSAPP_PROVIDER=cloud` el bot usa la API oficial en vez de Evolution API: no hay QR,
+no se desconecta y **no banean el número** por usar un bot.
+
+### Qué cuesta
+
+- La API en sí y el hosting de Meta: **gratis**.
+- Responder a quien te escribe (dentro de las 24hs de su último mensaje): **gratis**, sin límite.
+- Si la persona entra desde un anuncio "clic a WhatsApp": **72hs gratis** para todo.
+- Escribirle a alguien que no te escribió en las últimas 24hs: solo con **plantillas aprobadas**,
+  que se cobran por mensaje según el tipo (utilidad o marketing) y el país. Son centavos de
+  dólar; precios actualizados en
+  https://developers.facebook.com/docs/whatsapp/pricing
+- Para mandar plantillas pagas hay que cargar una tarjeta en el Business Manager.
+
+### 1. Crear la app en Meta
+
+1. Entrá a https://developers.facebook.com → **Mis apps → Crear app** → tipo **Empresa**,
+   y elegí el portfolio comercial (Business Manager) del negocio.
+2. Agregá el producto **WhatsApp**. Meta te da un número de prueba para testear gratis.
+3. En **WhatsApp → Configuración de la API** agregá el número real del negocio y verificalo
+   por SMS. Ese número **no puede estar en uso** en la app de WhatsApp: hay que borrar la
+   cuenta de WhatsApp de ese número antes, o usar uno nuevo.
+4. Copiá el **Identificador del número de teléfono** → `WA_PHONE_NUMBER_ID`.
+5. Verificá la empresa en el Business Manager (sin verificar hay límites bajos de envío).
+
+### 2. Token permanente
+
+El token que aparece en la pantalla de la API dura 24hs. Para producción:
+
+1. Business Manager → **Configuración del negocio → Usuarios del sistema → Agregar**
+   (rol administrador).
+2. **Asignar activos**: la app (control total) y la cuenta de WhatsApp.
+3. **Generar token** con los permisos `whatsapp_business_messaging` y
+   `whatsapp_business_management`, sin vencimiento → `WA_ACCESS_TOKEN`.
+4. En la app: **Configuración de la app → Básica → Clave secreta** → `WA_APP_SECRET`.
+
+### 3. Webhook
+
+1. En la app: **WhatsApp → Configuración → Webhook → Editar**.
+2. URL de devolución de llamada: `https://tu-dominio.com/webhook` (con `BASE_PATH` si usás
+   Nginx). Tiene que ser HTTPS.
+3. Token de verificación: el mismo valor que `WEBHOOK_VERIFY_TOKEN`.
+4. Guardá (el bot tiene que estar corriendo) y suscribite al campo **messages**.
+
+### 4. Plantillas
+
+Se crean en **WhatsApp Manager → Plantillas de mensajes**, idioma **Español (ARG)**
+(`es_AR`). Tardan de minutos a un par de horas en aprobarse. Los `{{n}}` tienen que ir en este
+orden porque el bot los completa así:
+
+| Variable `.env` | Nombre | Categoría | Texto |
+|---|---|---|---|
+| `WA_TEMPLATE_AVISO` | `aviso_interno` | Utilidad | Aviso del asistente de {{1}}: {{2}}. Entrá al panel para ver el detalle. |
+| `WA_TEMPLATE_RECORDATORIO` | `recordatorio_turno` | Utilidad | Hola {{1}}, te recordamos tu turno de {{2}} hoy a las {{3}} en {{4}}. Si necesitás cancelar o reprogramar, respondé este mensaje. |
+| `WA_TEMPLATE_CONFIRMACION` | `confirmacion_turno` | Utilidad | Hola {{1}}, ¿nos confirmás tu turno de {{2}} para mañana {{3}} a las {{4}}? Respondé este mensaje para confirmar o reprogramar. |
+| `WA_TEMPLATE_SEGUIMIENTO` | `seguimiento` | Marketing | Hola {{1}}, ¿pudiste ver lo que charlamos? Si te quedó alguna duda sobre {{2}}, respondé este mensaje y te ayudamos. |
+
+Cómo las usa el bot:
+
+- Si la persona escribió en las últimas 24hs, manda texto normal (gratis) y la plantilla no se usa.
+- Si no, manda la plantilla. Si esa plantilla no está configurada, no manda nada y lo deja en el log.
+- Los avisos al dueño (derivaciones, turnos, alertas) usan `aviso_interno` salvo que el dueño le
+  haya escrito al bot en las últimas 24hs.
+- El primer seguimiento sale a las 20hs (dentro de la ventana, gratis). El segundo, a las 72hs,
+  necesita la plantilla `seguimiento` (se cobra como marketing). Si la dejás vacía, no se manda.
+- Desde el dashboard solo se puede responder a mano dentro de las 24hs.
+
+### 5. Activar
+
+```bash
+# en el .env
+WHATSAPP_PROVIDER=cloud
+docker compose up -d --build
+```
+
+Mandale un WhatsApp al número y mirá `docker compose logs -f app`. Ya no hace falta el
+contenedor de Evolution API para este cliente.

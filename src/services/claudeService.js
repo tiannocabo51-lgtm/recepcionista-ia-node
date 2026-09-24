@@ -88,7 +88,7 @@ const TOOLS = [
 function notifyOwner(text) {
   if (!business.whatsappHumano) return;
   whatsappService
-    .sendMessage(business.whatsappHumano, text)
+    .sendOwnerNotice(business.whatsappHumano, text)
     .catch((err) => logger.error('No se pudo notificar al dueño del negocio:', err.message));
 }
 

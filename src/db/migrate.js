@@ -54,6 +54,11 @@ const MIGRATIONS = [
      phone      VARCHAR(30),
      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
    )`,
+  // Ventana de 24hs de la API oficial de WhatsApp
+  `CREATE TABLE IF NOT EXISTS whatsapp_windows (
+     phone           VARCHAR(30) PRIMARY KEY,
+     last_inbound_at TIMESTAMPTZ NOT NULL
+   )`,
 ];
 
 async function runMigrations() {

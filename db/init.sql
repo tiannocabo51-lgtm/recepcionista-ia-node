@@ -68,3 +68,9 @@ CREATE TABLE IF NOT EXISTS blocks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_blocks_date ON blocks(block_date);
+
+-- Última vez que escribió cada persona (ventana de 24hs de la API oficial de WhatsApp)
+CREATE TABLE IF NOT EXISTS whatsapp_windows (
+  phone           VARCHAR(30) PRIMARY KEY,
+  last_inbound_at TIMESTAMPTZ NOT NULL
+);

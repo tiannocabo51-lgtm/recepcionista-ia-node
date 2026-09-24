@@ -1,4 +1,3 @@
-const axios = require('axios');
 const config = require('../utils/config');
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsappService');
@@ -15,13 +14,7 @@ let wasDisconnected = false;
 // ── Check connection state ──────────────────────────────────────────────
 async function checkConnection() {
   try {
-    const url = `${config.evolutionApiUrl}/instance/connectionState/${config.evolutionInstance}`;
-    const res = await axios.get(url, {
-      headers: { apikey: config.evolutionApiKey },
-      timeout: 10000,
-    });
-
-    const state = res.data?.instance?.state;
+    const state = await whatsappService.getConnectionState();
     const now = Date.now();
 
     if (state !== 'open') {
@@ -51,9 +44,11 @@ async function checkConnection() {
 // ── Enviar alerta ───────────────────────────────────────────────────────
 async function sendAlert(state) {
   try {
-    const instance = config.evolutionInstance;
-    const msg = `⚠️ *Alerta Wayudu*\n\nEl WhatsApp de *${instance}* se desconectó (state: ${state}).\n\nEntrá al VPS y reconectá escaneando el QR.`;
-    await whatsappService.sendMessage(ALERT_PHONE, msg);
+    const msg = whatsappService.isCloud
+      ? `⚠️ Alerta Wayudu: la API oficial de WhatsApp de ${business.nombre} da error (${state}). Revisá el token (WA_ACCESS_TOKEN) y el número en Meta.`
+      : `⚠️ *Alerta Wayudu*\n\nEl WhatsApp de *${config.evolutionInstance}* se desconectó (state: ${state}).\n\nEntrá al VPS y reconectá escaneando el QR.`;
+    const sent = await whatsappService.sendOwnerNotice(ALERT_PHONE, msg);
+    if (!sent) throw new Error('envío rechazado');
     logger.info(`[Monitor] Alerta enviada a ${ALERT_PHONE}`);
   } catch (err) {
     // Si WhatsApp está caído, no podemos mandar por WhatsApp.

@@ -1,6 +1,7 @@
-# Recepcionista IA — Node.js + Claude + PostgreSQL + Evolution API
+# Recepcionista IA — Node.js + Claude + PostgreSQL + WhatsApp (Cloud API o Evolution API)
 
-Agente de WhatsApp para una estética. Recibe mensajes vía webhook de Evolution API,
+Agente de WhatsApp para una estética. Recibe mensajes vía webhook de la API oficial de
+WhatsApp (Cloud API de Meta) o de Evolution API (ver `WHATSAPP_PROVIDER` en `SETUP.md`),
 responde con Claude (Anthropic) en español natural, detecta la intención de la persona
 (pedir turno, precios, horarios, ubicación) y guarda los turnos en PostgreSQL.
 

@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const logger = require('../utils/logger');
 const whatsappService = require('./whatsappService');
 const business = require('../utils/businessConfig');
+const config = require('../utils/config');
 
 const REMINDER_HOURS = 2; // Send reminder X hours before appointment
 const CHECK_INTERVAL_MS = 10 * 60 * 1000; // Check every 10 minutes
@@ -31,8 +32,11 @@ async function checkAndSendReminders() {
       const msg = `Hola ${nombre} 👋\n\nTe recordamos tu turno de *${appt.service}* hoy a las *${time}* en ${business.nombre}.\n\n📍 ${business.ubicacion.direccion}\n\nSi necesitás cancelar o reprogramar, respondé a este mensaje. ¡Te esperamos!`;
 
       try {
-        await whatsappService.sendMessage(appt.phone, msg);
-        logger.info(`[Reminder] Enviado a ${appt.phone} para turno ${appt.id} a las ${time}`);
+        const tpl = config.waTemplates.recordatorio;
+        const ok = await whatsappService.sendMessage(appt.phone, msg, {
+          fallbackTemplate: tpl && { name: tpl, params: [nombre, appt.service, time, business.nombre] },
+        });
+        if (ok) logger.info(`[Reminder] Enviado a ${appt.phone} para turno ${appt.id} a las ${time}`);
       } catch (err) {
         logger.error(`[Reminder] Error enviando a ${appt.phone}:`, err.message);
         sent.delete(appt.id); // Retry next cycle

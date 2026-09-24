@@ -24,7 +24,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '2mb' }));
+// Se guarda el body crudo para validar la firma de los webhooks de Meta.
+app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 app.use(healthRoutes);
 app.use(webhookRoutes);
