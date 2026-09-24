@@ -5,8 +5,9 @@ Checklist para poner en marcha el agente para un nuevo negocio.
 ## Requisitos previos
 
 - [ ] VPS con Docker y Docker Compose instalados
-- [ ] Evolution API corriendo (con instancia creada para el cliente)
-- [ ] Número de WhatsApp del cliente (celular dedicado para el negocio)
+- [ ] Dominio con HTTPS apuntando al VPS (Meta exige HTTPS para el webhook)
+- [ ] App de Meta con WhatsApp configurado (ver "WhatsApp: API oficial de Meta" más abajo)
+- [ ] Número de WhatsApp para el negocio que **no** esté en uso en la app de WhatsApp
 
 ## Pasos
 
@@ -31,10 +32,11 @@ Editar `.env` y completar:
 | `GROQ_API_KEY` | Key de Groq (gratis en console.groq.com) |
 | `POSTGRES_PASSWORD` | Contraseña segura para la DB |
 | `DATABASE_URL` | Actualizar con la misma contraseña |
-| `EVOLUTION_API_URL` | URL de la Evolution API |
-| `EVOLUTION_API_KEY` | API key de la instancia Evolution |
-| `EVOLUTION_INSTANCE` | Nombre de la instancia de WhatsApp |
-| `WEBHOOK_VERIFY_TOKEN` | Token inventado para validar webhooks |
+| `WA_PHONE_NUMBER_ID` | Identificador del número en Meta |
+| `WA_ACCESS_TOKEN` | Token permanente del usuario del sistema |
+| `WA_APP_SECRET` | Clave secreta de la app de Meta |
+| `WA_TEMPLATE_*` | Nombres de las plantillas aprobadas |
+| `WEBHOOK_VERIFY_TOKEN` | Token inventado para verificar el webhook en Meta |
 | `DASHBOARD_USER` | Usuario para acceder al dashboard |
 | `DASHBOARD_PASSWORD` | Contraseña del dashboard |
 | `RECEPTIONIST_PHONE` | WhatsApp del dueño/recepcionista (con código país, ej: 5492235551234) |
@@ -76,26 +78,18 @@ Verificar que arrancó bien:
 docker compose logs -f app
 ```
 
-### 5. Vincular WhatsApp
+### 5. Conectar el webhook en Meta
 
-1. Abrir en el navegador: `http://IP-VPS:PUERTO-EVOLUTION/manager`
-2. En la instancia del cliente, generar QR
-3. Escanear el QR desde el celular del cliente (WhatsApp > Dispositivos vinculados > Vincular)
-4. Esperar a que diga "connected"
+Seguí el paso 3 de "WhatsApp: API oficial de Meta" más abajo, con la URL
+`https://tu-dominio.com/BASE_PATH/webhook`.
 
-### 6. Configurar webhook en Evolution API
-
-En la config de la instancia en Evolution, agregar webhook:
-- URL: `http://NOMBRE-CONTAINER:3000/webhook?token=TU-TOKEN`
-- Eventos: `MESSAGES_UPSERT`
-
-### 7. Probar
+### 6. Probar
 
 Mandar un mensaje de WhatsApp al número del cliente desde otro celular y verificar que el bot responde.
 
 Probar también un audio para confirmar que la transcripción funciona.
 
-### 8. Dashboard
+### 7. Dashboard
 
 Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales configuradas.
 
@@ -115,8 +109,8 @@ Acceder al dashboard en `http://IP-VPS:HOST_PORT/dashboard` con las credenciales
 
 Módulo `src/services/conversationLock.js` — 7 capas de protección para que el agente nunca spamee:
 
-- **Deduplicación por messageId**: cada webhook de Evolution API trae un ID único. Si ya se procesó, se ignora. Protege contra webhooks duplicados, retries y sync histórico al reconectar WhatsApp. TTL de 5 minutos.
-- **Filtro de mensajes antiguos**: si el `messageTimestamp` del webhook tiene más de 2 minutos de antigüedad, se descarta. Evita que al reconectar WhatsApp se procesen mensajes históricos como nuevos.
+- **Deduplicación por messageId**: cada mensaje de WhatsApp trae un ID único. Si ya se procesó, se ignora. Protege contra webhooks duplicados y reintentos de Meta. TTL de 5 minutos.
+- **Filtro de mensajes antiguos**: si el `timestamp` del mensaje tiene más de 2 minutos de antigüedad, se descarta. Evita responder tarde a mensajes que Meta reintenta después de una caída.
 - **Lock exclusivo por teléfono**: solo se procesa un mensaje a la vez por número. Si llega otro mientras se está procesando, se encola (máximo 1 en cola — el más reciente gana, el anterior se descarta). Elimina race conditions.
 - **Anti-burst**: máximo 2 respuestas del bot en 30 segundos sin que el usuario haya vuelto a escribir. Después se frena automáticamente. Se resetea cuando el usuario escribe.
 - **Control de saludo inteligente**: consulta la DB para saber cuándo fue el último mensaje del bot.
@@ -129,14 +123,14 @@ Módulo `src/services/conversationLock.js` — 7 capas de protección para que e
 ### Servicios automáticos (arrancan solos)
 
 - **Seguimiento automático de leads**: cada hora chequea leads estancados ("nuevo" o "consultando") y les manda un mensaje de seguimiento.
-  - 1er seguimiento: a las 24hs sin respuesta
-  - 2do seguimiento: a las 72hs sin respuesta
+  - 1er seguimiento: a las 20hs sin respuesta (dentro de la ventana de 24hs, gratis)
+  - 2do seguimiento: a las 72hs sin respuesta (necesita la plantilla `seguimiento`)
   - Máximo 2 seguimientos por lead, después no le escribe más
   - Solo manda en horario comercial (9 a 20hs, nunca domingos)
   - Notifica al dueño del negocio cada vez que manda un seguimiento
   - Si el lead responde, se resetea el contador automáticamente
 
-- **Monitor de conexión**: chequea cada 5 minutos si WhatsApp sigue conectado. Si se desconecta, manda alerta al `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas. Banner offline visible en el dashboard.
+- **Monitor de conexión**: chequea cada 5 minutos que el token y el número de WhatsApp sigan funcionando. Si fallan, manda alerta al `RECEPTIONIST_PHONE`. Cooldown de 30 min entre alertas. Banner offline visible en el dashboard.
 
 - **Recordatorios de turnos**: envía recordatorio automático de turnos por WhatsApp. Timing configurable en `businessConfig.js` > `recordatorios.antesDeTurno`:
   - `'2h'` — 2 horas antes del turno (por defecto)
@@ -186,13 +180,14 @@ Módulo `src/services/conversationLock.js` — 7 capas de protección para que e
 | `client_notes` | Notas CRM por cliente |
 | `lead_tags` | Tags personalizados por lead |
 | `activity_log` | Log de actividad del dashboard |
+| `whatsapp_windows` | Último mensaje de cada persona (ventana de 24hs de WhatsApp) |
 
 ---
 
-## WhatsApp con la API oficial de Meta (Cloud API)
+## WhatsApp: API oficial de Meta (Cloud API)
 
-Con `WHATSAPP_PROVIDER=cloud` el bot usa la API oficial en vez de Evolution API: no hay QR,
-no se desconecta y **no banean el número** por usar un bot.
+El bot usa la API oficial de WhatsApp: no hay QR, no se desconecta y **no banean el número**
+por usar un bot.
 
 ### Qué cuesta
 
@@ -258,13 +253,8 @@ Cómo las usa el bot:
   necesita la plantilla `seguimiento` (se cobra como marketing). Si la dejás vacía, no se manda.
 - Desde el dashboard solo se puede responder a mano dentro de las 24hs.
 
-### 5. Activar
+### 5. Probar
 
-```bash
-# en el .env
-WHATSAPP_PROVIDER=cloud
-docker compose up -d --build
-```
-
-Mandale un WhatsApp al número y mirá `docker compose logs -f app`. Ya no hace falta el
-contenedor de Evolution API para este cliente.
+Levantá el bot (`docker compose up -d --build`), mandale un WhatsApp al número y mirá
+`docker compose logs -f app`. Con el número de prueba de Meta, primero agregá tu celular en
+la lista de destinatarios permitidos de la pantalla de la API.

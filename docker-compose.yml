@@ -29,12 +29,9 @@ services:
         condition: service_healthy
     networks:
       - internal
-      - evolution_default
 
 networks:
   internal:
-  evolution_default:
-    external: true
 
 volumes:
   postgres_data:

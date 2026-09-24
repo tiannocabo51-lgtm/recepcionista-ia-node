@@ -2,7 +2,7 @@ const axios = require('axios');
 const config = require('../../utils/config');
 const logger = require('../../utils/logger');
 
-// Proveedor oficial: WhatsApp Cloud API de Meta.
+// WhatsApp Cloud API (API oficial de Meta).
 // Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
 
 function graphUrl(path) {

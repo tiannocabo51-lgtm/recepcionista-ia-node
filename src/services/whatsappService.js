@@ -4,12 +4,7 @@ const logger = require('../utils/logger');
 const business = require('../utils/businessConfig');
 const windowRepo = require('../db/whatsappWindow.repository');
 
-// WHATSAPP_PROVIDER elige el proveedor: 'cloud' (API oficial de Meta) o 'evolution' (no oficial).
-const provider = config.whatsappProvider === 'cloud'
-  ? require('./whatsapp/cloud')
-  : require('./whatsapp/evolution');
-
-const isCloud = config.whatsappProvider === 'cloud';
+const provider = require('./whatsapp/cloud');
 
 // Margen para no mandar justo cuando se está cerrando la ventana de 24hs.
 const WINDOW_MS = 23.5 * 60 * 60 * 1000;
@@ -39,10 +34,8 @@ async function withRetry(label, fn, retries = 2) {
   return false;
 }
 
-// ¿Se le puede mandar texto libre? Con Evolution siempre; con la API oficial solo si
-// la persona escribió en las últimas 24hs.
+// WhatsApp solo deja mandar texto libre si la persona escribió en las últimas 24hs.
 async function isWindowOpen(phone) {
-  if (!isCloud) return true;
   try {
     const last = await windowRepo.getLastInbound(phone);
     return !!last && Date.now() - new Date(last).getTime() < WINDOW_MS;
@@ -53,19 +46,18 @@ async function isWindowOpen(phone) {
 }
 
 async function recordInbound(phone) {
-  if (!isCloud) return;
   await windowRepo.recordInbound(phone).catch((err) =>
     logger.error(`[WhatsApp] No se pudo guardar la ventana de ${phone}:`, err.message)
   );
 }
 
 async function sendTemplate(phone, name, params = []) {
-  if (!isCloud || !name) return false;
+  if (!name) return false;
   return withRetry(`plantilla "${name}" a ${phone}`, () => provider.sendTemplate(phone, name, params));
 }
 
-// Envía texto libre. Con la API oficial, si pasaron más de 24hs desde el último mensaje
-// de la persona, manda `options.fallbackTemplate` ({ name, params }) o no manda nada.
+// Envía texto libre. Si pasaron más de 24hs desde el último mensaje de la persona,
+// manda `options.fallbackTemplate` ({ name, params }) o no manda nada.
 async function sendMessage(phone, text, options = {}) {
   if (await isWindowOpen(phone)) {
     return withRetry(`mensaje a ${phone}`, () => provider.sendText(phone, text));
@@ -123,7 +115,6 @@ async function transcribeAudio(base64Audio) {
 }
 
 module.exports = {
-  isCloud,
   sendMessage,
   sendTemplate,
   sendOwnerNotice,

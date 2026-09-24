@@ -44,9 +44,7 @@ async function checkConnection() {
 // ── Enviar alerta ───────────────────────────────────────────────────────
 async function sendAlert(state) {
   try {
-    const msg = whatsappService.isCloud
-      ? `⚠️ Alerta Wayudu: la API oficial de WhatsApp de ${business.nombre} da error (${state}). Revisá el token (WA_ACCESS_TOKEN) y el número en Meta.`
-      : `⚠️ *Alerta Wayudu*\n\nEl WhatsApp de *${config.evolutionInstance}* se desconectó (state: ${state}).\n\nEntrá al VPS y reconectá escaneando el QR.`;
+    const msg = `⚠️ Alerta Wayudu: la API de WhatsApp de ${business.nombre} da error (${state}). Revisá el token (WA_ACCESS_TOKEN) y el número en Meta.`;
     const sent = await whatsappService.sendOwnerNotice(ALERT_PHONE, msg);
     if (!sent) throw new Error('envío rechazado');
     logger.info(`[Monitor] Alerta enviada a ${ALERT_PHONE}`);

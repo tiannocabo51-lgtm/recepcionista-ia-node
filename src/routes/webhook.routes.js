@@ -47,11 +47,6 @@ function hasValidMetaSignature(req) {
     crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected));
 }
 
-function isAuthorized(req) {
-  if (whatsappService.isCloud && config.waAppSecret) return hasValidMetaSignature(req);
-  if (!config.webhookVerifyToken) return true;
-  return req.query.token === config.webhookVerifyToken;
-}
 
 // ── Procesamiento de un mensaje entrante ────────────────────────────────
 async function processIncoming(phone, text) {
@@ -75,12 +70,12 @@ async function processIncoming(phone, text) {
   }
 }
 
-// ── Verificación del webhook (solo API oficial) ─────────────────────────
+// ── Verificación del webhook ────────────────────────────────────────────
 // Meta hace un GET con hub.challenge al guardar la URL en el panel de la app.
 router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
-  if (mode === 'subscribe' && config.webhookVerifyToken && token === config.webhookVerifyToken) {
+  if (mode === 'subscribe' && token === config.webhookVerifyToken) {
     logger.info('[Webhook] Verificado por Meta');
     return res.status(200).send(String(req.query['hub.challenge'] || ''));
   }
@@ -89,7 +84,7 @@ router.get('/webhook', (req, res) => {
 
 // ── Webhook endpoint ────────────────────────────────────────────────────
 router.post('/webhook', async (req, res) => {
-  if (!isAuthorized(req)) {
+  if (!hasValidMetaSignature(req)) {
     return res.status(401).json({ status: 'unauthorized' });
   }
 

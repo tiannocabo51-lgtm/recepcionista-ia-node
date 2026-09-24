@@ -8,8 +8,7 @@ const config = require('../utils/config');
 
 // ── Config ──────────────────────────────────────────────────────────────
 const MAX_FOLLOWUPS = 2;               // máximo 2 seguimientos por lead
-// Con la API oficial el primero sale antes de que se cierre la ventana de 24hs (gratis)
-const FIRST_FOLLOWUP_HOURS = whatsappService.isCloud ? 20 : 24;
+const FIRST_FOLLOWUP_HOURS = 20;       // antes de que se cierre la ventana de 24hs (gratis)
 const SECOND_FOLLOWUP_HOURS = 72;      // segundo seguimiento a las 72hs
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // cada 1 hora
 const HORARIO_INICIO = 9;             // no mandar antes de las 9
@@ -63,7 +62,7 @@ async function generateFollowUp(phone, lead) {
   }
 }
 
-// Fuera de la ventana de 24hs de la API oficial solo se puede mandar una plantilla.
+// Fuera de la ventana de 24hs de WhatsApp solo se puede mandar una plantilla.
 // Se guarda en el historial un resumen de lo que se le mandó, para que la IA tenga contexto
 // si la persona responde.
 async function sendTemplateWithNote(phone, name, params, note) {
